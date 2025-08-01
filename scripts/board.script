@@ -1,0 +1,274 @@
+local CELL_SIZE = 64
+local GRID_WIDTH = 7
+local GRID_HEIGHT = 9
+
+-- ручной сдвиг (в пикселях)
+local FIX_X = 300
+local FIX_Y = 300
+
+-- Начальная конфигурация фишек на поле
+-- Формат: {grid_x, grid_y, level}
+local INITIAL_TOKENS = {
+	{1, 1, 1},
+	{2, 1, 1},
+	{3, 1, 2},
+	{4, 1, 1},
+	{5, 1, 3},
+	{1, 2, 2},
+	{2, 2, 1},
+	{3, 2, 1},
+	{4, 2, 2},
+	{5, 2, 1},
+	{1, 3, 1},
+	{2, 3, 3},
+	{3, 3, 1},
+	{4, 3, 1},
+	{5, 3, 2},
+	{5, 6, 5},
+}
+
+-- получить позицию ячейки по координатам сетки
+local function grid_to_screen(gx, gy)
+	local half_width = (GRID_WIDTH - 1) * CELL_SIZE / 2
+	local half_height = (GRID_HEIGHT - 1) * CELL_SIZE / 2
+	return vmath.vector3(
+		(gx - 1) * CELL_SIZE - half_width + FIX_X,
+		(gy - 1) * CELL_SIZE - half_height + FIX_Y,
+		0
+	)
+end
+
+-- Найти ячейку по экранным координатам
+local function find_cell_at_position(screen_x, screen_y)
+	for x = 1, GRID_WIDTH do
+		for y = 1, GRID_HEIGHT do
+			local cell_pos = grid_to_screen(x, y)
+			local distance = vmath.length(vmath.vector3(screen_x, screen_y, 0) - cell_pos)
+			if distance <= CELL_SIZE / 2 then
+				return { x = x, y = y }
+			end
+		end
+	end
+	return nil
+end
+
+function init(self)
+	msg.post(".", "acquire_input_focus")
+
+	-- Создаем ячейки доски
+	self.cells = {}
+	local half_width = (GRID_WIDTH - 1) * CELL_SIZE / 2
+	local half_height = (GRID_HEIGHT - 1) * CELL_SIZE / 2
+
+	for x = 1, GRID_WIDTH do
+		self.cells[x] = {}
+		for y = 1, GRID_HEIGHT do
+			local pos = vmath.vector3(
+			(x - 1) * CELL_SIZE - half_width + FIX_X,
+			(y - 1) * CELL_SIZE - half_height + FIX_Y,
+			0
+		)
+			local id = factory.create("#cell_factory", pos, nil, { grid_x = x, grid_y = y }, 1)
+			self.cells[x][y] = { id = id }
+		end
+	end
+	
+	-- Создаем фишки согласно начальной конфигурации
+	self.tokens = {}
+	for _, token_config in ipairs(INITIAL_TOKENS) do
+		local x, y, level = token_config[1], token_config[2], token_config[3]
+		local pos = grid_to_screen(x, y)
+		-- Фишки рисуются поверх ячеек (z = 1)
+		pos.z = 1
+		local token_id = factory.create("#token_factory", pos, nil, { level = level, grid_x = x, grid_y = y }, 1)
+		self.tokens[x .. "_" .. y] = { id = token_id, level = level }
+		print("BOARD: Created token level " .. level .. " at grid(" .. x .. ", " .. y .. ") id=" .. tostring(token_id))
+	end
+
+	-- НОВАЯ СИСТЕМА: Упрощенное состояние перетаскивания
+	self.dragged_token = nil -- ID перетаскиваемой фишки
+	self.dragged_from = nil -- {x, y} исходная позиция
+	self.dragged_level = nil -- уровень перетаскиваемой фишки
+	self.is_dragging = false -- флаг перетаскивания
+	
+	print("BOARD: Initialization complete")
+end
+
+function update(self, dt)
+	-- НОВАЯ СИСТЕМА: Простое следование за курсором
+	if self.is_dragging and self.dragged_token then
+		-- Получаем позицию мыши из последнего события
+		if self.last_mouse_pos then
+			local target_pos = vmath.vector3(self.last_mouse_pos.x, self.last_mouse_pos.y, 1)
+			msg.post(self.dragged_token, "set_position", { position = target_pos })
+		end
+	end
+end
+
+function on_message(self, message_id, message, sender)
+	if message_id == hash("cell_clicked") then
+		print("BOARD: Cell clicked at grid(" .. message.grid_x .. ", " .. message.grid_y .. ")")
+		
+		-- Проверяем, есть ли фишка в этой ячейке
+		local token_key = message.grid_x .. "_" .. message.grid_y
+		local token = self.tokens[token_key]
+		
+		if token then
+			print("BOARD: Found token level " .. token.level .. " at grid(" .. message.grid_x .. ", " .. message.grid_y .. ")")
+			-- Начинаем перетаскивание фишки
+			start_drag(self, token.id, message.grid_x, message.grid_y, token.level)
+		else
+			print("BOARD: No token at grid(" .. message.grid_x .. ", " .. message.grid_y .. ")")
+		end
+	end
+end
+
+function on_input(self, action_id, action)
+	if action_id == hash("touch") then
+		-- Обновляем позицию мыши при перетаскивании
+		if self.is_dragging and self.dragged_token then
+			self.last_mouse_pos = { x = action.x, y = action.y }
+		end
+		
+		if action.pressed then
+			-- Если уже перетаскиваем, игнорируем новое нажатие
+			if not self.is_dragging then
+				-- Определяем ячейку под курсором
+				local clicked_cell = find_cell_at_position(action.x, action.y)
+				if clicked_cell then
+					-- Проверяем, есть ли фишка в этой ячейке
+					local token_key = clicked_cell.x .. "_" .. clicked_cell.y
+					local token = self.tokens[token_key]
+					
+					if token then
+						print("BOARD: Starting drag of token level " .. token.level .. " at grid(" .. clicked_cell.x .. ", " .. clicked_cell.y .. ")")
+						-- Начинаем перетаскивание фишки
+						start_drag(self, token.id, clicked_cell.x, clicked_cell.y, token.level)
+					end
+				end
+			end
+		elseif action.released and self.dragged_token then
+			-- НОВАЯ СИСТЕМА: Обработка отпускания фишки
+			handle_token_release(self, action.x, action.y)
+		end
+	end
+end
+
+-- НОВАЯ СИСТЕМА: Функция начала перетаскивания
+function start_drag(self, token_id, grid_x, grid_y, level)
+	self.dragged_token = token_id
+	self.dragged_from = { x = grid_x, y = grid_y }
+	self.dragged_level = level
+	self.is_dragging = true
+	
+	-- Удаляем фишку из исходной позиции в данных
+	local token_key = grid_x .. "_" .. grid_y
+	self.tokens[token_key] = nil
+	
+	-- Отправляем сообщение фишке о начале перетаскивания
+	msg.post(token_id, "start_drag")
+	
+	print("BOARD: Drag started - token " .. tostring(token_id) .. " from (" .. grid_x .. ", " .. grid_y .. ")")
+end
+
+-- НОВАЯ СИСТЕМА: Функция обработки отпускания фишки
+function handle_token_release(self, mouse_x, mouse_y)
+	print("BOARD: Handling token release at (" .. mouse_x .. ", " .. mouse_y .. ")")
+	
+	-- Находим ячейку под курсором
+	local target_cell = find_cell_at_position(mouse_x, mouse_y)
+	
+	if target_cell then
+		local target_key = target_cell.x .. "_" .. target_cell.y
+		local target_token = self.tokens[target_key]
+		
+		-- Проверяем возможность мерджа
+		if target_token and target_token.level == self.dragged_level then
+			-- МЕРДЖ: Объединяем фишки
+			print("BOARD: MERGE - level " .. target_token.level .. " + " .. self.dragged_level .. " = " .. (target_token.level + 1))
+			perform_merge(self, target_cell, target_token, target_key)
+		elseif not target_token then
+			-- ПЕРЕМЕЩЕНИЕ: Перемещаем на пустую ячейку
+			print("BOARD: MOVE - to empty cell (" .. target_cell.x .. ", " .. target_cell.y .. ")")
+			perform_move(self, target_cell)
+		else
+			-- ВОЗВРАТ: Возвращаем на исходную позицию
+			print("BOARD: RETURN - to original position (" .. self.dragged_from.x .. ", " .. self.dragged_from.y .. ")")
+			perform_return(self)
+		end
+	else
+		-- ВОЗВРАТ: Не попали в ячейку
+		print("BOARD: RETURN - missed cell, returning to (" .. self.dragged_from.x .. ", " .. self.dragged_from.y .. ")")
+		perform_return(self)
+	end
+	
+	-- Очищаем состояние перетаскивания
+	clear_drag_state(self)
+end
+
+-- НОВАЯ СИСТЕМА: Функция выполнения мерджа
+function perform_merge(self, target_cell, target_token, target_key)
+	-- Удаляем старые фишки
+	go.delete(target_token.id)
+	go.delete(self.dragged_token)
+	
+	-- Создаем новую фишку
+	local new_level = target_token.level + 1
+	local pos = grid_to_screen(target_cell.x, target_cell.y)
+	pos.z = 1
+	local new_token_id = factory.create("#token_factory", pos, nil, { level = new_level, grid_x = target_cell.x, grid_y = target_cell.y }, 1)
+	
+	-- Обновляем данные
+	self.tokens[target_key] = { id = new_token_id, level = new_level }
+	
+	-- Обновляем визуал новой фишки
+	msg.post(new_token_id, "update_level", { level = new_level })
+	
+	print("BOARD: Merge completed - new token level " .. new_level .. " at (" .. target_cell.x .. ", " .. target_cell.y .. ")")
+end
+
+-- НОВАЯ СИСТЕМА: Функция выполнения перемещения
+function perform_move(self, target_cell)
+	-- Перемещаем фишку на новую позицию
+	local pos = grid_to_screen(target_cell.x, target_cell.y)
+	pos.z = 1
+	msg.post(self.dragged_token, "move_to", { position = pos, smooth = true })
+	
+	-- Обновляем данные
+	local target_key = target_cell.x .. "_" .. target_cell.y
+	self.tokens[target_key] = { id = self.dragged_token, level = self.dragged_level }
+	
+	-- Обновляем координаты фишки
+	msg.post(self.dragged_token, "set_grid_position", { grid_x = target_cell.x, grid_y = target_cell.y })
+	
+	print("BOARD: Move completed - token moved to (" .. target_cell.x .. ", " .. target_cell.y .. ")")
+end
+
+-- НОВАЯ СИСТЕМА: Функция выполнения возврата
+function perform_return(self)
+	-- Возвращаем фишку на исходную позицию
+	local pos = grid_to_screen(self.dragged_from.x, self.dragged_from.y)
+	pos.z = 1
+	msg.post(self.dragged_token, "move_to", { position = pos, smooth = true })
+	
+	-- Восстанавливаем данные
+	local original_key = self.dragged_from.x .. "_" .. self.dragged_from.y
+	self.tokens[original_key] = { id = self.dragged_token, level = self.dragged_level }
+	
+	print("BOARD: Return completed - token returned to (" .. self.dragged_from.x .. ", " .. self.dragged_from.y .. ")")
+end
+
+-- НОВАЯ СИСТЕМА: Функция очистки состояния перетаскивания
+function clear_drag_state(self)
+	-- Останавливаем перетаскивание
+	msg.post(self.dragged_token, "stop_drag")
+	
+	-- Очищаем данные
+	self.dragged_token = nil
+	self.dragged_from = nil
+	self.dragged_level = nil
+	self.is_dragging = false
+	self.last_mouse_pos = nil
+	
+	print("BOARD: Drag state cleared")
+end

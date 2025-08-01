@@ -1,0 +1,100 @@
+print("TOKEN SCRIPT: Script loaded successfully!")
+
+go.property("level", 1)
+go.property("grid_x", 1)
+go.property("grid_y", 1)
+
+-- Скорость движения
+local move_speed = 2500  -- пикселей в секунду
+
+-- Функция для обновления визуального отображения уровня
+local function update_level_visual(self)
+	-- Устанавливаем текст
+	local text = tostring(self.level)
+	label.set_text("#label", text)
+	
+	-- Изменяем цвет в зависимости от уровня
+	local colors = {
+		vmath.vector4(1, 0, 0, 1),  -- Красный для уровня 1
+		vmath.vector4(0, 1, 0, 1),  -- Зеленый для уровня 2
+		vmath.vector4(0, 0, 1, 1),  -- Синий для уровня 3
+		vmath.vector4(1, 1, 0, 1),  -- Желтый для уровня 4
+		vmath.vector4(1, 0, 1, 1),  -- Пурпурный для уровня 5
+	}
+	local color = colors[self.level] or vmath.vector4(1, 1, 1, 1)
+	go.set("#label", "color", color)
+	
+	-- Изменяем масштаб в зависимости от уровня
+	local scale = vmath.vector3(0.8 + self.level * 0.1, 0.8 + self.level * 0.1, 1.0)
+	go.set("#label", "scale", scale)
+end
+
+function init(self)
+	self.level = self.level
+	self.grid_x = self.grid_x
+	self.grid_y = self.grid_y
+	
+	-- Устанавливаем визуальное отображение уровня
+	update_level_visual(self)
+end
+
+function update(self, dt)
+	-- НОВАЯ СИСТЕМА: Простая анимация движения
+	if self.move_target then
+		local current_pos = go.get_position(".")
+		local direction = self.move_target - current_pos
+		local distance = vmath.length(direction)
+		
+		if distance > 1 then
+			-- Продолжаем движение
+			local movement = vmath.normalize(direction) * move_speed * dt
+			if vmath.length(movement) > distance then
+				movement = direction
+			end
+			go.set_position(current_pos + movement, ".")
+		else
+			-- Достигли цели
+			go.set_position(self.move_target, ".")
+			self.move_target = nil
+		end
+	end
+end
+
+function on_message(self, message_id, message, sender)
+	if message_id == hash("start_drag") then
+		-- НОВАЯ СИСТЕМА: Начало перетаскивания
+		self.is_dragging = true
+		-- Визуальные эффекты для перетаскивания
+		go.set_scale(vmath.vector3(1.2, 1.2, 1.0), ".")
+		go.set("#label", "color", vmath.vector4(1, 1, 1, 0.8))
+		
+	elseif message_id == hash("stop_drag") then
+		-- НОВАЯ СИСТЕМА: Окончание перетаскивания
+		self.is_dragging = false
+		-- Возвращаем нормальный размер и цвет
+		go.set_scale(vmath.vector3(1.0, 1.0, 1.0), ".")
+		update_level_visual(self)
+		
+	elseif message_id == hash("set_position") then
+		-- НОВАЯ СИСТЕМА: Принудительная установка позиции (для следования за курсором)
+		go.set_position(message.position, ".")
+		
+	elseif message_id == hash("move_to") then
+		-- НОВАЯ СИСТЕМА: Плавное движение к цели
+		if message.smooth then
+			self.move_target = message.position
+		else
+			go.set_position(message.position, ".")
+		end
+		
+	elseif message_id == hash("set_grid_position") then
+		-- Обновляем координаты сетки
+		self.grid_x = message.grid_x
+		self.grid_y = message.grid_y
+		
+	elseif message_id == hash("update_level") then
+		-- Обновляем уровень и визуал
+		self.level = message.level
+		update_level_visual(self)
+	end
+end 

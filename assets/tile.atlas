@@ -1,0 +1,7 @@
+images {
+  image: "/assets/tile.png"
+}
+images {
+  image: "/assets/token.png"
+}
+extrude_borders: 2

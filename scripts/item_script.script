@@ -1,0 +1,28 @@
+go.property("grid_x", 1)
+go.property("grid_y", 1)
+
+function init(self)
+	self.grid_x = self.grid_x
+	self.grid_y = self.grid_y
+	go.set_scale(vmath.vector3(1.0, 1.0, 1.0))
+
+	-- Ячейка доски - статичный элемент
+	print("CELL INIT: grid(" .. self.grid_x .. ", " .. self.grid_y .. ") id=" .. tostring(go.get_id()))
+end
+
+-- Явно переопределяем on_input чтобы ничего не делать
+function on_input(self, action_id, action)
+	-- Ничего не делаем - ввод обрабатывается только через board.script
+end
+
+function on_message(self, message_id, message, sender)
+	if message_id == hash("clicked") then
+		print("CELL: Clicked at grid(" .. self.grid_x .. ", " .. self.grid_y .. ")")
+		-- Передаем информацию о нажатии на доску
+		msg.post("/board", "cell_clicked", {
+			grid_x = self.grid_x,
+			grid_y = self.grid_y,
+			cell_id = go.get_id()
+		})
+	end
+end
