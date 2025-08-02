@@ -20,3 +20,6 @@ Thumbs.db
 # Temporary files
 *.tmp
 *.temp
+/.editor_settings
+/.internal
+/build

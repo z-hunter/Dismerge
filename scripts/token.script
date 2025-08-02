@@ -1,41 +1,71 @@
 print("TOKEN SCRIPT: Script loaded successfully!")
 
+-- Подключаем модуль эволюционных таблиц
+local evolution_tables = require("scripts.evolution_tables")
+
 go.property("level", 1)
 go.property("grid_x", 1)
 go.property("grid_y", 1)
+go.property("evo_id", "")
 
 -- Скорость движения
 local move_speed = 2500  -- пикселей в секунду
 
 -- Функция для обновления визуального отображения уровня
 local function update_level_visual(self)
+	print("TOKEN: update_level_visual called with evo_id='" .. tostring(self.evo_id) .. "' level=" .. tostring(self.level))
+	
 	-- Устанавливаем текст
 	local text = tostring(self.level)
 	label.set_text("#label", text)
+	print("TOKEN: Set text to '" .. text .. "'")
 	
-	-- Изменяем цвет в зависимости от уровня
-	local colors = {
-		vmath.vector4(1, 0, 0, 1),  -- Красный для уровня 1
-		vmath.vector4(0, 1, 0, 1),  -- Зеленый для уровня 2
-		vmath.vector4(0, 0, 1, 1),  -- Синий для уровня 3
-		vmath.vector4(1, 1, 0, 1),  -- Желтый для уровня 4
-		vmath.vector4(1, 0, 1, 1),  -- Пурпурный для уровня 5
+	-- Цвета для 6 эволюционных цепочек
+	local chain_colors = {
+		["TLS"] = vmath.vector4(1, 0, 0, 1),    -- Красный для Tools
+		["FNS"] = vmath.vector4(0, 1, 0, 1),    -- Зеленый для Finishing Tools
+		["SPR"] = vmath.vector4(0, 0, 1, 1),    -- Синий для Spare Parts
+		["CNS"] = vmath.vector4(1, 1, 0, 1),    -- Желтый для Construction Materials
+		["LGH"] = vmath.vector4(1, 0, 1, 1),    -- Пурпурный для Light
+		["ELC"] = vmath.vector4(0, 1, 1, 1),    -- Голубой для Electrics
 	}
-	local color = colors[self.level] or vmath.vector4(1, 1, 1, 1)
+	
+	-- Проверяем, есть ли цвет для данной цепочки
+	local color = chain_colors[self.evo_id]
+	if color then
+		print("TOKEN: Found color for evo_id '" .. tostring(self.evo_id) .. "': " .. tostring(color))
+	else
+		print("TOKEN: WARNING - No color found for evo_id '" .. tostring(self.evo_id) .. "', using white")
+		color = vmath.vector4(1, 1, 1, 1)
+	end
+	
 	go.set("#label", "color", color)
+	print("TOKEN: Applied color: " .. tostring(color))
 	
 	-- Изменяем масштаб в зависимости от уровня
 	local scale = vmath.vector3(0.8 + self.level * 0.1, 0.8 + self.level * 0.1, 1.0)
 	go.set("#label", "scale", scale)
+	print("TOKEN: Applied scale: " .. tostring(scale))
 end
 
 function init(self)
+	print("TOKEN: init() called")
+	print("TOKEN: Properties received - level=" .. tostring(self.level) .. " grid_x=" .. tostring(self.grid_x) .. " grid_y=" .. tostring(self.grid_y) .. " evo_id='" .. tostring(self.evo_id) .. "'")
+	
 	self.level = self.level
 	self.grid_x = self.grid_x
 	self.grid_y = self.grid_y
 	
-	-- Устанавливаем визуальное отображение уровня
-	update_level_visual(self)
+	-- evo_id будет установлен через сообщение set_evo_id
+	-- Пока что устанавливаем временное значение
+	if not self.evo_id or self.evo_id == "" then
+		print("TOKEN: evo_id not set during creation, will be set via message")
+		self.evo_id = "TLS"  -- Временное значение
+	end
+	
+	print("TOKEN: Initial values - evo_id='" .. tostring(self.evo_id) .. "' level=" .. tostring(self.level))
+	
+	-- Визуальное отображение будет обновлено после получения set_evo_id сообщения
 end
 
 function update(self, dt)
@@ -78,6 +108,7 @@ function on_message(self, message_id, message, sender)
 	elseif message_id == hash("set_position") then
 		-- НОВАЯ СИСТЕМА: Принудительная установка позиции (для следования за курсором)
 		go.set_position(message.position, ".")
+		print("TOKEN: Position set to (" .. message.position.x .. ", " .. message.position.y .. ")")
 		
 	elseif message_id == hash("move_to") then
 		-- НОВАЯ СИСТЕМА: Плавное движение к цели
@@ -96,5 +127,32 @@ function on_message(self, message_id, message, sender)
 		-- Обновляем уровень и визуал
 		self.level = message.level
 		update_level_visual(self)
+		
+	elseif message_id == hash("update_evo_id") then
+		-- Обновляем ID эволюционной цепочки и визуал
+		self.evo_id = message.evo_id
+		update_level_visual(self)
+		
+	elseif message_id == hash("set_evo_id") then
+		-- Устанавливаем ID эволюционной цепочки при инициализации
+		self.evo_id = message.evo_id
+		print("TOKEN: Received set_evo_id message with evo_id='" .. tostring(self.evo_id) .. "'")
+		update_level_visual(self)
+		
+	elseif message_id == hash("get_token_info") then
+		-- Возвращаем информацию о фишке
+		local chain = evolution_tables.get_evolution_chain(self.evo_id)
+		local item_name = evolution_tables.get_item_name(self.evo_id, self.level)
+		
+		local info = {
+			evo_id = self.evo_id,
+			level = self.level,
+			chain_name = chain and chain.name or "Unknown",
+			item_name = item_name or "Unknown",
+			grid_x = self.grid_x,
+			grid_y = self.grid_y
+		}
+		
+		msg.post(sender, "token_info", info)
 	end
 end 

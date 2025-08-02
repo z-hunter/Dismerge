@@ -30,20 +30,12 @@
         :scene
       ]
       [
-        "/main/board.go"
-        :scene
-      ]
-      [
         "/main/cell.go"
         :scene
       ]
       [
         "/main/cell_factory.factory"
         :cljfx-form-view
-      ]
-      [
-        "/main/main.collection"
-        :scene
       ]
       [
         "/main/board_factorys.go"
@@ -54,8 +46,44 @@
         :cljfx-form-view
       ]
       [
+        "/main/ui_factory.factory"
+        :cljfx-form-view
+      ]
+      [
+        "/main/board.go"
+        :scene
+      ]
+      [
         "/main/token.go"
         :scene
+      ]
+      [
+        "/main/ui_label_factory.factory"
+        :cljfx-form-view
+      ]
+      [
+        "/main/ui_lable.go"
+        :scene
+      ]
+      [
+        "/main/main.collection"
+        :scene
+      ]
+      [
+        "/main/ui_label.go"
+        :scene
+      ]
+      [
+        "/main/ui.go"
+        :scene
+      ]
+      [
+        "/assets/iosevka.font"
+        :scene
+      ]
+      [
+        "/scripts/ui.script"
+        :code
       ]
       [
         "/scripts/board.script"

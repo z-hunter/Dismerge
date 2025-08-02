@@ -1,3 +1,6 @@
+-- Подключаем модуль эволюционных таблиц
+local evolution_tables = require("scripts.evolution_tables")
+
 local CELL_SIZE = 64
 local GRID_WIDTH = 7
 local GRID_HEIGHT = 9
@@ -7,24 +10,24 @@ local FIX_X = 300
 local FIX_Y = 300
 
 -- Начальная конфигурация фишек на поле
--- Формат: {grid_x, grid_y, level}
+-- Формат: {grid_x, grid_y, level, evo_id}
 local INITIAL_TOKENS = {
-	{1, 1, 1},
-	{2, 1, 1},
-	{3, 1, 2},
-	{4, 1, 1},
-	{5, 1, 3},
-	{1, 2, 2},
-	{2, 2, 1},
-	{3, 2, 1},
-	{4, 2, 2},
-	{5, 2, 1},
-	{1, 3, 1},
-	{2, 3, 3},
-	{3, 3, 1},
-	{4, 3, 1},
-	{5, 3, 2},
-	{5, 6, 5},
+	{1, 1, 1, "TLS"},
+	{2, 1, 1, "TLS"},
+	{3, 1, 2, "TLS"},
+	{4, 1, 1, "FNS"},
+	{5, 1, 3, "FNS"},
+	{1, 2, 2, "FNS"},
+	{2, 2, 1, "SPR"},
+	{3, 2, 1, "SPR"},
+	{4, 2, 2, "SPR"},
+	{5, 2, 1, "CNS"},
+	{1, 3, 1, "CNS"},
+	{2, 3, 3, "CNS"},
+	{3, 3, 1, "LGH"},
+	{4, 3, 1, "LGH"},
+	{5, 3, 2, "LGH"},
+	{5, 6, 5, "ELC"},
 }
 
 -- получить позицию ячейки по координатам сетки
@@ -55,6 +58,16 @@ end
 function init(self)
 	msg.post(".", "acquire_input_focus")
 
+	-- Загружаем эволюционные таблицы
+	print("BOARD: Loading evolution tables...")
+	if evolution_tables.load_evolution_tables() then
+		print("BOARD: Evolution tables loaded successfully")
+		-- Выводим отладочную информацию
+		evolution_tables.debug_print_chains()
+	else
+		print("BOARD: ERROR - Failed to load evolution tables")
+	end
+
 	-- Создаем ячейки доски
 	self.cells = {}
 	local half_width = (GRID_WIDTH - 1) * CELL_SIZE / 2
@@ -76,23 +89,36 @@ function init(self)
 	-- Создаем фишки согласно начальной конфигурации
 	self.tokens = {}
 	for _, token_config in ipairs(INITIAL_TOKENS) do
-		local x, y, level = token_config[1], token_config[2], token_config[3]
+		local x, y, level, evo_id = token_config[1], token_config[2], token_config[3], token_config[4]
 		local pos = grid_to_screen(x, y)
 		-- Фишки рисуются поверх ячеек (z = 1)
 		pos.z = 1
-		local token_id = factory.create("#token_factory", pos, nil, { level = level, grid_x = x, grid_y = y }, 1)
-		self.tokens[x .. "_" .. y] = { id = token_id, level = level }
-		print("BOARD: Created token level " .. level .. " at grid(" .. x .. ", " .. y .. ") id=" .. tostring(token_id))
+		
+		print("BOARD: Creating token with evo_id='" .. tostring(evo_id) .. "' level=" .. tostring(level) .. " at grid(" .. x .. ", " .. y .. ")")
+		
+		local properties = { level = level, grid_x = x, grid_y = y }
+		print("BOARD: Factory properties: level=" .. tostring(properties.level) .. " grid_x=" .. tostring(properties.grid_x) .. " grid_y=" .. tostring(properties.grid_y))
+		
+		local token_id = factory.create("#token_factory", pos, nil, properties, 1)
+		self.tokens[x .. "_" .. y] = { id = token_id, level = level, evo_id = evo_id }
+		
+		-- Отправляем сообщение для установки evo_id после создания
+		msg.post(token_id, "set_evo_id", { evo_id = evo_id })
+		
+		print("BOARD: Created token " .. evo_id .. " level " .. level .. " at grid(" .. x .. ", " .. y .. ") id=" .. tostring(token_id))
 	end
 
 	-- НОВАЯ СИСТЕМА: Упрощенное состояние перетаскивания
 	self.dragged_token = nil -- ID перетаскиваемой фишки
 	self.dragged_from = nil -- {x, y} исходная позиция
 	self.dragged_level = nil -- уровень перетаскиваемой фишки
+	self.dragged_evo_id = nil -- ID эволюционной цепочки перетаскиваемой фишки
 	self.is_dragging = false -- флаг перетаскивания
 	
 	print("BOARD: Initialization complete")
 end
+
+
 
 function update(self, dt)
 	-- НОВАЯ СИСТЕМА: Простое следование за курсором
@@ -101,6 +127,10 @@ function update(self, dt)
 		if self.last_mouse_pos then
 			local target_pos = vmath.vector3(self.last_mouse_pos.x, self.last_mouse_pos.y, 1)
 			msg.post(self.dragged_token, "set_position", { position = target_pos })
+			-- Отладочная информация
+			print("BOARD: Moving token to (" .. self.last_mouse_pos.x .. ", " .. self.last_mouse_pos.y .. ")")
+		else
+			print("BOARD: No mouse position available")
 		end
 	end
 end
@@ -114,9 +144,9 @@ function on_message(self, message_id, message, sender)
 		local token = self.tokens[token_key]
 		
 		if token then
-			print("BOARD: Found token level " .. token.level .. " at grid(" .. message.grid_x .. ", " .. message.grid_y .. ")")
+			print("BOARD: Found token " .. token.evo_id .. " level " .. token.level .. " at grid(" .. message.grid_x .. ", " .. message.grid_y .. ")")
 			-- Начинаем перетаскивание фишки
-			start_drag(self, token.id, message.grid_x, message.grid_y, token.level)
+			start_drag(self, token.id, message.grid_x, message.grid_y, token.level, token.evo_id)
 		else
 			print("BOARD: No token at grid(" .. message.grid_x .. ", " .. message.grid_y .. ")")
 		end
@@ -130,6 +160,9 @@ function on_input(self, action_id, action)
 			self.last_mouse_pos = { x = action.x, y = action.y }
 		end
 		
+		-- Обновляем позицию мыши всегда для следования за курсором
+		self.last_mouse_pos = { x = action.x, y = action.y }
+		
 		if action.pressed then
 			-- Если уже перетаскиваем, игнорируем новое нажатие
 			if not self.is_dragging then
@@ -141,9 +174,9 @@ function on_input(self, action_id, action)
 					local token = self.tokens[token_key]
 					
 					if token then
-						print("BOARD: Starting drag of token level " .. token.level .. " at grid(" .. clicked_cell.x .. ", " .. clicked_cell.y .. ")")
+						print("BOARD: Starting drag of token " .. token.evo_id .. " level " .. token.level .. " at grid(" .. clicked_cell.x .. ", " .. clicked_cell.y .. ")")
 						-- Начинаем перетаскивание фишки
-						start_drag(self, token.id, clicked_cell.x, clicked_cell.y, token.level)
+						start_drag(self, token.id, clicked_cell.x, clicked_cell.y, token.level, token.evo_id)
 					end
 				end
 			end
@@ -155,10 +188,11 @@ function on_input(self, action_id, action)
 end
 
 -- НОВАЯ СИСТЕМА: Функция начала перетаскивания
-function start_drag(self, token_id, grid_x, grid_y, level)
+function start_drag(self, token_id, grid_x, grid_y, level, evo_id)
 	self.dragged_token = token_id
 	self.dragged_from = { x = grid_x, y = grid_y }
 	self.dragged_level = level
+	self.dragged_evo_id = evo_id
 	self.is_dragging = true
 	
 	-- Удаляем фишку из исходной позиции в данных
@@ -168,7 +202,11 @@ function start_drag(self, token_id, grid_x, grid_y, level)
 	-- Отправляем сообщение фишке о начале перетаскивания
 	msg.post(token_id, "start_drag")
 	
-	print("BOARD: Drag started - token " .. tostring(token_id) .. " from (" .. grid_x .. ", " .. grid_y .. ")")
+	-- Показываем информацию о фишке
+	print("BOARD: Вызываем show_token_info с evo_id=" .. tostring(evo_id) .. " level=" .. tostring(level))
+	show_token_info(self, evo_id, level)
+	
+	print("BOARD: Drag started - token " .. evo_id .. " level " .. level .. " from (" .. grid_x .. ", " .. grid_y .. ")")
 end
 
 -- НОВАЯ СИСТЕМА: Функция обработки отпускания фишки
@@ -182,10 +220,10 @@ function handle_token_release(self, mouse_x, mouse_y)
 		local target_key = target_cell.x .. "_" .. target_cell.y
 		local target_token = self.tokens[target_key]
 		
-		-- Проверяем возможность мерджа
-		if target_token and target_token.level == self.dragged_level then
+		-- Проверяем возможность мерджа (одинаковые уровень и цепочка)
+		if target_token and target_token.level == self.dragged_level and target_token.evo_id == self.dragged_evo_id then
 			-- МЕРДЖ: Объединяем фишки
-			print("BOARD: MERGE - level " .. target_token.level .. " + " .. self.dragged_level .. " = " .. (target_token.level + 1))
+			print("BOARD: MERGE - " .. target_token.evo_id .. " level " .. target_token.level .. " + " .. self.dragged_evo_id .. " level " .. self.dragged_level)
 			perform_merge(self, target_cell, target_token, target_key)
 		elseif not target_token then
 			-- ПЕРЕМЕЩЕНИЕ: Перемещаем на пустую ячейку
@@ -212,19 +250,36 @@ function perform_merge(self, target_cell, target_token, target_key)
 	go.delete(target_token.id)
 	go.delete(self.dragged_token)
 	
-	-- Создаем новую фишку
-	local new_level = target_token.level + 1
-	local pos = grid_to_screen(target_cell.x, target_cell.y)
-	pos.z = 1
-	local new_token_id = factory.create("#token_factory", pos, nil, { level = new_level, grid_x = target_cell.x, grid_y = target_cell.y }, 1)
+	-- Получаем результат слияния из эволюционных таблиц
+	local merge_result = evolution_tables.get_merge_result(target_token.evo_id, target_token.level)
 	
-	-- Обновляем данные
-	self.tokens[target_key] = { id = new_token_id, level = new_level }
-	
-	-- Обновляем визуал новой фишки
-	msg.post(new_token_id, "update_level", { level = new_level })
-	
-	print("BOARD: Merge completed - new token level " .. new_level .. " at (" .. target_cell.x .. ", " .. target_cell.y .. ")")
+	if merge_result then
+		-- Создаем новую фишку с результатом слияния
+		local pos = grid_to_screen(target_cell.x, target_cell.y)
+		pos.z = 1
+		local new_token_id = factory.create("#token_factory", pos, nil, { 
+			level = merge_result.level, 
+			grid_x = target_cell.x, 
+			grid_y = target_cell.y, 
+			evo_id = merge_result.evo_id 
+		}, 1)
+		
+		-- Обновляем данные
+		self.tokens[target_key] = { 
+			id = new_token_id, 
+			level = merge_result.level, 
+			evo_id = merge_result.evo_id 
+		}
+		
+		-- Обновляем визуал новой фишки
+		msg.post(new_token_id, "update_level", { level = merge_result.level })
+		msg.post(new_token_id, "update_evo_id", { evo_id = merge_result.evo_id })
+		
+		local item_name = evolution_tables.get_item_name(merge_result.evo_id, merge_result.level)
+		print("BOARD: Merge completed - new token " .. merge_result.evo_id .. " level " .. merge_result.level .. " (" .. item_name .. ") at (" .. target_cell.x .. ", " .. target_cell.y .. ")")
+	else
+		print("BOARD: Merge failed - no evolution result for " .. target_token.evo_id .. " level " .. target_token.level)
+	end
 end
 
 -- НОВАЯ СИСТЕМА: Функция выполнения перемещения
@@ -236,12 +291,12 @@ function perform_move(self, target_cell)
 	
 	-- Обновляем данные
 	local target_key = target_cell.x .. "_" .. target_cell.y
-	self.tokens[target_key] = { id = self.dragged_token, level = self.dragged_level }
+	self.tokens[target_key] = { id = self.dragged_token, level = self.dragged_level, evo_id = self.dragged_evo_id }
 	
 	-- Обновляем координаты фишки
 	msg.post(self.dragged_token, "set_grid_position", { grid_x = target_cell.x, grid_y = target_cell.y })
 	
-	print("BOARD: Move completed - token moved to (" .. target_cell.x .. ", " .. target_cell.y .. ")")
+	print("BOARD: Move completed - token " .. self.dragged_evo_id .. " level " .. self.dragged_level .. " moved to (" .. target_cell.x .. ", " .. target_cell.y .. ")")
 end
 
 -- НОВАЯ СИСТЕМА: Функция выполнения возврата
@@ -253,9 +308,9 @@ function perform_return(self)
 	
 	-- Восстанавливаем данные
 	local original_key = self.dragged_from.x .. "_" .. self.dragged_from.y
-	self.tokens[original_key] = { id = self.dragged_token, level = self.dragged_level }
+	self.tokens[original_key] = { id = self.dragged_token, level = self.dragged_level, evo_id = self.dragged_evo_id }
 	
-	print("BOARD: Return completed - token returned to (" .. self.dragged_from.x .. ", " .. self.dragged_from.y .. ")")
+	print("BOARD: Return completed - token " .. self.dragged_evo_id .. " level " .. self.dragged_level .. " returned to (" .. self.dragged_from.x .. ", " .. self.dragged_from.y .. ")")
 end
 
 -- НОВАЯ СИСТЕМА: Функция очистки состояния перетаскивания
@@ -267,8 +322,51 @@ function clear_drag_state(self)
 	self.dragged_token = nil
 	self.dragged_from = nil
 	self.dragged_level = nil
+	self.dragged_evo_id = nil
 	self.is_dragging = false
 	self.last_mouse_pos = nil
 	
+	-- Скрываем информацию о фишке
+	hide_token_info(self)
+	
 	print("BOARD: Drag state cleared")
+end
+
+-- Функция для отображения информации о фишке
+function show_token_info(self, evo_id, level)
+	print("BOARD: show_token_info вызвана с evo_id=" .. tostring(evo_id) .. " level=" .. tostring(level))
+	
+	local chain = evolution_tables.get_evolution_chain(evo_id)
+	local item_name = evolution_tables.get_item_name(evo_id, level)
+	
+	print("BOARD: chain=" .. tostring(chain) .. " item_name=" .. tostring(item_name))
+	
+	if chain and item_name then
+		local info_text = chain.name .. " - Уровень " .. level .. " - " .. item_name
+		print("BOARD: INFO: " .. info_text)
+		
+		-- Отправляем сообщение в UI для отображения информации
+		print("BOARD: Отправляем сообщение в UI")
+		msg.post("main:/ui", "show_token_info", {
+			chain_name = chain.name,
+			level = level,
+			item_name = item_name
+		})
+	else
+		print("BOARD: ERROR: Cannot get info for evo_id='" .. tostring(evo_id) .. "' level=" .. tostring(level))
+		if not chain then
+			print("BOARD: ERROR: Chain not found for evo_id='" .. tostring(evo_id) .. "'")
+		end
+		if not item_name then
+			print("BOARD: ERROR: Item name not found for evo_id='" .. tostring(evo_id) .. "' level=" .. tostring(level))
+		end
+	end
+end
+
+-- Функция для скрытия информации о фишке
+function hide_token_info(self)
+	print("INFO: Информация о фишке скрыта")
+	
+	-- Отправляем сообщение в UI для скрытия информации
+	msg.post("main:/ui", "hide_token_info")
 end
