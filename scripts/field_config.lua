@@ -5,23 +5,8 @@ local M = {}
 
 -- Импортируем универсальный CSV парсер
 local csv_parser = require("scripts.csv_parser")
-
--- Функция для парсинга строки токена в формате "evo_id-level"
-local function parse_token_string(token_str)
-    if not token_str or token_str == "" then
-        return nil, nil
-    end
-    
-    local evo_id, level_str = token_str:match("^([^-]+)-(%d+)$")
-    if evo_id and level_str then
-        local level = tonumber(level_str)
-        if level and level > 0 then
-            return evo_id, level
-        end
-    end
-    
-    return nil, nil
-end
+-- Импортируем утилиты
+local utils = require("scripts.utils")
 
 -- Функция для загрузки начальной конфигурации поля
 function M.load_initial_field_config()
@@ -54,7 +39,7 @@ function M.load_initial_field_config()
             -- Заполняем столбцы (1-8)
             for col = 1, 8 do
                 local token_str = record[tostring(col)]
-                local evo_id, level = parse_token_string(token_str)
+                local evo_id, level = utils.parse_token_string(token_str)
                 
                 if evo_id and level then
                     field_config[line_num][col] = token_str
@@ -80,7 +65,7 @@ function M.validate_field_config(field_config, evolution_tables)
     for line_num, line in pairs(field_config) do
         for col_num, token_str in pairs(line) do
             if token_str and token_str ~= "" then
-                local evo_id, level = parse_token_string(token_str)
+                local evo_id, level = utils.parse_token_string(token_str)
                 if evo_id and level then
                     -- Проверяем существование эволюционной цепочки
                     local chain = evolution_tables.get_evolution_chain(evo_id)

@@ -2,6 +2,8 @@
 local evolution_tables = require("scripts.evolution_tables")
 -- Подключаем модуль конфигурации поля
 local field_config = require("scripts.field_config")
+-- Подключаем утилиты
+local utils = require("scripts.utils")
 
 local CELL_SIZE = 64
 local GRID_WIDTH = 7
@@ -20,25 +22,6 @@ local function grid_to_screen(gx, gy)
 		(gy - 1) * CELL_SIZE - half_height + FIX_Y,
 		0
 	)
-end
-
--- Парсить строку "evo_id-level" и возвращать evo_id и level
-local function parse_token_string(token_str)
-	if not token_str or token_str == "" then
-		return nil, nil
-	end
-	
-	local evo_id, level_str = token_str:match("^([^-]+)-(%d+)$")
-	if not evo_id or not level_str then
-		return nil, nil
-	end
-	
-	local level = tonumber(level_str)
-	if not level then
-		return nil, nil
-	end
-	
-	return evo_id, level
 end
 
 -- Найти ячейку по экранным координатам
@@ -128,7 +111,7 @@ function init(self)
 		
 		for col_num, token_str in pairs(line) do
 			-- Парсим строку токена
-			local evo_id, level = parse_token_string(token_str)
+			local evo_id, level = utils.parse_token_string(token_str)
 			
 			-- Если ячейка не пустая, создаем токен
 			if evo_id and level then
@@ -149,7 +132,8 @@ function init(self)
 					print("BOARD: Factory properties: level=" .. tostring(properties.level) .. " grid_x=" .. tostring(properties.grid_x) .. " grid_y=" .. tostring(properties.grid_y))
 					
 					local token_id = factory.create("#token_factory", pos, nil, properties, 1)
-					self.tokens[col_num .. "_" .. real_y] = { id = token_id, level = level, evo_id = evo_id }
+					local token_key = utils.get_token_key(col_num, real_y)
+					self.tokens[token_key] = { id = token_id, level = level, evo_id = evo_id }
 					
 					-- Отправляем сообщение для установки evo_id после создания
 					msg.post(token_id, "set_evo_id", { evo_id = evo_id })
@@ -185,7 +169,7 @@ function on_message(self, message_id, message, sender)
 		print("BOARD: Cell clicked at grid(" .. message.grid_x .. ", " .. message.grid_y .. ")")
 		
 		-- Проверяем, есть ли фишка в этой ячейке
-		local token_key = message.grid_x .. "_" .. message.grid_y
+		local token_key = utils.get_token_key(message.grid_x, message.grid_y)
 		local token = self.tokens[token_key]
 		
 		if token then
@@ -222,7 +206,7 @@ function on_input(self, action_id, action)
 				local clicked_cell = find_cell_at_position(action.x, action.y)
 				if clicked_cell then
 					-- Проверяем, есть ли фишка в этой ячейке
-					local token_key = clicked_cell.x .. "_" .. clicked_cell.y
+					local token_key = utils.get_token_key(clicked_cell.x, clicked_cell.y)
 					local token = self.tokens[token_key]
 					
 					if token then
@@ -250,7 +234,7 @@ function select_cell(self, grid_x, grid_y)
 	end
 	
 	-- Проверяем, есть ли фишка в этой ячейке
-	local token_key = grid_x .. "_" .. grid_y
+	local token_key = utils.get_token_key(grid_x, grid_y)
 	local token = self.tokens[token_key]
 	
 	if token then
@@ -298,7 +282,7 @@ function start_drag(self, token_id, grid_x, grid_y, level, evo_id)
 	select_cell(self, grid_x, grid_y)
 	
 	-- Удаляем фишку из исходной позиции в данных
-	local token_key = grid_x .. "_" .. grid_y
+	local token_key = utils.get_token_key(grid_x, grid_y)
 	self.tokens[token_key] = nil
 	
 	-- Отправляем сообщение фишке о начале перетаскивания
@@ -315,7 +299,7 @@ function handle_token_release(self, mouse_x, mouse_y)
 	local target_cell = find_cell_at_position(mouse_x, mouse_y)
 	
 	if target_cell then
-		local target_key = target_cell.x .. "_" .. target_cell.y
+		local target_key = utils.get_token_key(target_cell.x, target_cell.y)
 		local target_token = self.tokens[target_key]
 		
 		-- Проверяем возможность мерджа (одинаковые уровень и цепочка)
@@ -391,7 +375,7 @@ function perform_move(self, target_cell)
 	msg.post(self.dragged_token, "move_to", { position = pos, smooth = true })
 	
 	-- Обновляем данные
-	local target_key = target_cell.x .. "_" .. target_cell.y
+	local target_key = utils.get_token_key(target_cell.x, target_cell.y)
 	self.tokens[target_key] = { id = self.dragged_token, level = self.dragged_level, evo_id = self.dragged_evo_id }
 	
 	-- Обновляем координаты фишки
@@ -411,7 +395,7 @@ function perform_return(self)
 	msg.post(self.dragged_token, "move_to", { position = pos, smooth = true })
 	
 	-- Восстанавливаем данные
-	local original_key = self.dragged_from.x .. "_" .. self.dragged_from.y
+	local original_key = utils.get_token_key(self.dragged_from.x, self.dragged_from.y)
 	self.tokens[original_key] = { id = self.dragged_token, level = self.dragged_level, evo_id = self.dragged_evo_id }
 	
 	print("BOARD: Return completed - token " .. self.dragged_evo_id .. " level " .. self.dragged_level .. " returned to (" .. self.dragged_from.x .. ", " .. self.dragged_from.y .. ")")
@@ -423,7 +407,7 @@ end
 function check_selection_after_drag(self)
 	if self.selected_cell then
 		-- Проверяем, есть ли фишка в выделенной ячейке
-		local token_key = self.selected_cell.x .. "_" .. self.selected_cell.y
+		local token_key = utils.get_token_key(self.selected_cell.x, self.selected_cell.y)
 		local token = self.tokens[token_key]
 		
 		if not token then
