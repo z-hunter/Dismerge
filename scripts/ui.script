@@ -1,0 +1,18 @@
+-- UI Script для отображения информации о фишке
+print("UI SCRIPT: Script loaded successfully!")
+
+function init(self)
+	-- Устанавливаем начальный текст
+	label.set_text("#info_label", "ТЕСТОВАЯ НАДПИСЬ НА ЭКРАНЕ")
+end
+
+function on_message(self, message_id, message, sender)
+	print("UI: Получено сообщение: " .. tostring(message_id))
+	
+	if message_id == hash("show_token_info") then
+		local info_text = (message.chain_name or "") .. " - Уровень " .. (message.level or "") .. " - " .. (message.item_name or "")
+		label.set_text("#info_label", info_text)
+	elseif message_id == hash("hide_token_info") then
+		label.set_text("#info_label", "ТЕСТОВАЯ НАДПИСЬ НА ЭКРАНЕ")
+	end
+end 
