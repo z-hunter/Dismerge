@@ -30,10 +30,6 @@
         :scene
       ]
       [
-        "/main/cell.go"
-        :scene
-      ]
-      [
         "/main/cell_factory.factory"
         :cljfx-form-view
       ]
@@ -74,20 +70,28 @@
         :scene
       ]
       [
-        "/main/ui.go"
-        :scene
+        "/scripts/board.script"
+        :code
       ]
       [
-        "/assets/iosevka.font"
-        :scene
+        "/scripts/token.script"
+        :code
       ]
       [
         "/scripts/ui.script"
         :code
       ]
       [
-        "/scripts/board.script"
-        :code
+        "/assets/iosevka.font"
+        :scene
+      ]
+      [
+        "/main/cell.go"
+        :scene
+      ]
+      [
+        "/main/ui.go"
+        :scene
       ]
     ]
   }

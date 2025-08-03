@@ -6,7 +6,6 @@ local evolution_tables = require("scripts.evolution_tables")
 go.property("level", 1)
 go.property("grid_x", 1)
 go.property("grid_y", 1)
-go.property("evo_id", "")
 
 -- Скорость движения
 local move_speed = 2500  -- пикселей в секунду
@@ -20,24 +19,9 @@ local function update_level_visual(self)
 	label.set_text("#label", text)
 	print("TOKEN: Set text to '" .. text .. "'")
 	
-	-- Цвета для 6 эволюционных цепочек
-	local chain_colors = {
-		["TLS"] = vmath.vector4(1, 0, 0, 1),    -- Красный для Tools
-		["FNS"] = vmath.vector4(0, 1, 0, 1),    -- Зеленый для Finishing Tools
-		["SPR"] = vmath.vector4(0, 0, 1, 1),    -- Синий для Spare Parts
-		["CNS"] = vmath.vector4(1, 1, 0, 1),    -- Желтый для Construction Materials
-		["LGH"] = vmath.vector4(1, 0, 1, 1),    -- Пурпурный для Light
-		["ELC"] = vmath.vector4(0, 1, 1, 1),    -- Голубой для Electrics
-	}
-	
-	-- Проверяем, есть ли цвет для данной цепочки
-	local color = chain_colors[self.evo_id]
-	if color then
-		print("TOKEN: Found color for evo_id '" .. tostring(self.evo_id) .. "': " .. tostring(color))
-	else
-		print("TOKEN: WARNING - No color found for evo_id '" .. tostring(self.evo_id) .. "', using white")
-		color = vmath.vector4(1, 1, 1, 1)
-	end
+	-- Получаем цвет для эволюционной цепочки
+	local color = evolution_tables.get_chain_color(self.evo_id)
+	print("TOKEN: Color for evo_id '" .. tostring(self.evo_id) .. "': " .. tostring(color))
 	
 	go.set("#label", "color", color)
 	print("TOKEN: Applied color: " .. tostring(color))
