@@ -3,95 +3,62 @@
 
 local M = {}
 
+-- Импортируем универсальный CSV парсер
+local csv_parser = require("scripts.csv_parser")
+
 -- Структура для хранения данных эволюционных таблиц
 local evolution_tables = {}
-
--- Функция для удаления пробелов в начале и конце строки
-local function trim(str)
-    return str:match("^%s*(.-)%s*$")
-end
-
--- Функция для парсинга CSV строки
-local function parse_csv_line(line)
-    local result = {}
-    local current = ""
-    local in_quotes = false
-    
-    for i = 1, #line do
-        local char = line:sub(i, i)
-        
-        if char == '"' then
-            in_quotes = not in_quotes
-        elseif char == ',' and not in_quotes then
-            table.insert(result, current)
-            current = ""
-        else
-            current = current .. char
-        end
-    end
-    
-    -- Добавляем последний элемент
-    table.insert(result, current)
-    
-    return result
-end
 
 -- Функция для загрузки эволюционных таблиц из CSV файла
 function M.load_evolution_tables()
     local file_path = "config/evo.csv"
     
-    -- Читаем файл
-    local file = io.open(file_path, "r")
-    if not file then
-        print("ERROR: Cannot open evolution tables file: " .. file_path)
+    -- Определяем поля, которые нужно извлечь из CSV
+    local field_names = {
+        ["Evo_ID"] = true,
+        ["Name_str"] = true,
+        ["NextEvo_ID"] = true,
+        ["MaxGrade"] = true,
+        ["1"] = true, ["2"] = true, ["3"] = true, ["4"] = true, ["5"] = true, ["6"] = true,
+        ["7"] = true, ["8"] = true, ["9"] = true, ["10"] = true, ["11"] = true, ["12"] = true
+    }
+    
+    -- Парсим CSV файл
+    local records = csv_parser.parse_csv_file(file_path, field_names)
+    if not records then
+        print("ERROR: Failed to parse evolution tables file: " .. file_path)
         return false
     end
     
-    local lines = {}
-    for line in file:lines() do
-        table.insert(lines, line)
-    end
-    file:close()
-    
-    -- Пропускаем первую строку (заголовок таблицы)
-    -- Вторая строка содержит заголовки колонок
-    local headers = parse_csv_line(lines[2])
-    
-    -- Обрабатываем строки с данными (начиная с 4-й строки)
-    for i = 4, #lines do
-        local line = lines[i]
-        if line and trim(line) ~= "" then
-            local fields = parse_csv_line(line)
+    -- Обрабатываем записи
+    for _, record in ipairs(records) do
+        local evo_id = record["Evo_ID"]
+        local name_str = record["Name_str"]
+        local next_evo_id = record["NextEvo_ID"]
+        local max_grade = csv_parser.get_field_value(record, "MaxGrade", "number") or 0
+        
+        if evo_id and evo_id ~= "" then
+            -- Создаем таблицу для этой цепочки эволюции
+            local evolution_chain = {
+                id = evo_id,
+                name = name_str or "Unknown",
+                next_evo_id = (next_evo_id and next_evo_id ~= "") and next_evo_id or nil,
+                max_grade = max_grade,
+                levels = {}
+            }
             
-            -- Проверяем, что у нас есть достаточно полей
-            if #fields >= 18 then
-                local evo_id = trim(fields[2])
-                local name_str = trim(fields[3])
-                local next_evo_id = trim(fields[5])
-                local max_grade = tonumber(fields[7]) or 0
-                
-                -- Создаем таблицу для этой цепочки эволюции
-                local evolution_chain = {
-                    id = evo_id,
-                    name = name_str,
-                    next_evo_id = next_evo_id ~= "" and next_evo_id or nil,
-                    max_grade = max_grade,
-                    levels = {}
-                }
-                
-                -- Заполняем названия уровней (колонки 8-19)
-                for level = 1, 12 do
-                    local level_name = trim(fields[7 + level])
-                    if level_name and level_name ~= "" then
-                        evolution_chain.levels[level] = level_name
-                    end
+            -- Заполняем названия уровней
+            for level = 1, 12 do
+                local level_name = record[tostring(level)]
+                if level_name and level_name ~= "" then
+                    evolution_chain.levels[level] = level_name
                 end
-                
-                -- Сохраняем цепочку
-                evolution_tables[evo_id] = evolution_chain
-                
-                print("Loaded evolution chain: " .. evo_id .. " - " .. name_str .. " (max grade: " .. max_grade .. ")")
             end
+            
+            -- Сохраняем цепочку
+            evolution_tables[evo_id] = evolution_chain
+            
+            print("Loaded evolution chain: " .. evo_id .. " - " .. name_str .. " (max grade: " .. max_grade .. ")")
         end
     end
     

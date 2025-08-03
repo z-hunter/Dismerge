@@ -1,5 +1,7 @@
 -- Подключаем модуль эволюционных таблиц
 local evolution_tables = require("scripts.evolution_tables")
+-- Подключаем модуль конфигурации поля
+local field_config = require("scripts.field_config")
 
 local CELL_SIZE = 64
 local GRID_WIDTH = 7
@@ -8,31 +10,6 @@ local GRID_HEIGHT = 9
 -- ручной сдвиг (в пикселях)
 local FIX_X = 300
 local FIX_Y = 300
-
--- Начальная конфигурация фишек на поле (7x9)
--- Формат: "evo_id-level" или "" для пустой ячейки
--- Строки представляют Y координаты (сверху вниз в конфиге, но снизу вверх в игре)
--- Элементы в строке - X координаты (слева направо)
-local INITIAL_TOKENS = {
-	-- Y=1 (верхний ряд)
-	{"TLS-1", "TLS-1", "TLS-2", "FNS-1", "FNS-3", "", "", ""},
-	-- Y=2
-	{"FNS-2", "SPR-1", "SPR-1", "SPR-2", "CNS-1", "", "", ""},
-	-- Y=3
-	{"CNS-1", "CNS-3", "LGH-1", "LGH-1", "LGH-2", "", "", ""},
-	-- Y=4
-	{"", "", "", "", "", "", "", ""},
-	-- Y=5
-	{"", "", "", "", "", "", "", ""},
-	-- Y=6
-	{"", "", "", "", "", "", "", ""},
-	-- Y=7
-	{"", "", "", "TLS-3", "", "", "", ""},
-	-- Y=8
-	{"", "", "", "TLS-5", "", "", "", ""},
-	-- Y=9 (нижний ряд)
-	{"", "", "", "TLS-4", "", "", "", ""},
-}
 
 -- получить позицию ячейки по координатам сетки
 local function grid_to_screen(gx, gy)
@@ -81,6 +58,20 @@ end
 function init(self)
 	msg.post(".", "acquire_input_focus")
 
+	-- Инициализируем основные структуры данных
+	self.tokens = {}
+	self.cells = {}
+	
+	-- НОВАЯ СИСТЕМА: Упрощенное состояние перетаскивания
+	self.dragged_token = nil -- ID перетаскиваемой фишки
+	self.dragged_from = nil -- {x, y} исходная позиция
+	self.dragged_level = nil -- уровень перетаскиваемой фишки
+	self.dragged_evo_id = nil -- ID эволюционной цепочки перетаскиваемой фишки
+	self.is_dragging = false -- флаг перетаскивания
+	
+	-- СИСТЕМА ВЫДЕЛЕНИЯ ЯЧЕЕК
+	self.selected_cell = nil -- {x, y} выделенная ячейка (может быть только одна)
+
 	-- Загружаем эволюционные таблицы
 	print("BOARD: Loading evolution tables...")
 	if evolution_tables.load_evolution_tables() then
@@ -89,10 +80,28 @@ function init(self)
 		evolution_tables.debug_print_chains()
 	else
 		print("BOARD: ERROR - Failed to load evolution tables")
+		return
 	end
 
+	-- Загружаем конфигурацию поля
+	print("BOARD: Loading field configuration...")
+	local field_config_data = field_config.load_initial_field_config()
+	if not field_config_data then
+		print("BOARD: ERROR - Failed to load field configuration")
+		return
+	end
+	
+	-- Валидируем конфигурацию поля
+	local is_valid, error_msg = field_config.validate_field_config(field_config_data, evolution_tables)
+	if not is_valid then
+		print("BOARD: ERROR - Field configuration validation failed: " .. error_msg)
+		return
+	end
+	
+	-- Выводим отладочную информацию о конфигурации
+	field_config.debug_print_config(field_config_data)
+
 	-- Создаем ячейки доски
-	self.cells = {}
 	local half_width = (GRID_WIDTH - 1) * CELL_SIZE / 2
 	local half_height = (GRID_HEIGHT - 1) * CELL_SIZE / 2
 
@@ -109,16 +118,15 @@ function init(self)
 		end
 	end
 	
-	-- Создаем фишки согласно начальной конфигурации
-	self.tokens = {}
-	for y = 1, #INITIAL_TOKENS do
-		local row = INITIAL_TOKENS[y]
+	-- Создаем фишки согласно загруженной конфигурации
+	
+	-- Проходим по конфигурации поля
+	for line_num, line in pairs(field_config_data) do
 		-- Вычисляем реальную Y координату (инвертируем порядок строк)
-		local real_y = #INITIAL_TOKENS - y + 1
+		-- В CSV строки идут сверху вниз (1 - верхняя), в игре Y=1 - нижняя
+		local real_y = GRID_HEIGHT - line_num + 1
 		
-		for x = 1, #row do
-			local token_str = row[x]
-			
+		for col_num, token_str in pairs(line) do
 			-- Парсим строку токена
 			local evo_id, level = parse_token_string(token_str)
 			
@@ -127,42 +135,30 @@ function init(self)
 				-- Проверяем, существует ли такая цепочка и уровень
 				local chain = evolution_tables.get_evolution_chain(evo_id)
 				if not chain then
-					print("BOARD: ERROR - Evolution chain '" .. evo_id .. "' not found in config at grid(" .. x .. ", " .. real_y .. ")")
+					print("BOARD: ERROR - Evolution chain '" .. evo_id .. "' not found in config at grid(" .. col_num .. ", " .. real_y .. ")")
 				elseif level > chain.max_grade then
-					print("BOARD: ERROR - Level " .. level .. " exceeds max grade " .. chain.max_grade .. " for chain '" .. evo_id .. "' at grid(" .. x .. ", " .. real_y .. ")")
+					print("BOARD: ERROR - Level " .. level .. " exceeds max grade " .. chain.max_grade .. " for chain '" .. evo_id .. "' at grid(" .. col_num .. ", " .. real_y .. ")")
 				else
-					local pos = grid_to_screen(x, real_y)
+					local pos = grid_to_screen(col_num, real_y)
 					-- Фишки рисуются поверх ячеек (z = 1)
 					pos.z = 1
 					
-					print("BOARD: Creating token with evo_id='" .. evo_id .. "' level=" .. level .. " at grid(" .. x .. ", " .. real_y .. ")")
+					print("BOARD: Creating token with evo_id='" .. evo_id .. "' level=" .. level .. " at grid(" .. col_num .. ", " .. real_y .. ")")
 					
-					local properties = { level = level, grid_x = x, grid_y = real_y }
+					local properties = { level = level, grid_x = col_num, grid_y = real_y }
 					print("BOARD: Factory properties: level=" .. tostring(properties.level) .. " grid_x=" .. tostring(properties.grid_x) .. " grid_y=" .. tostring(properties.grid_y))
 					
 					local token_id = factory.create("#token_factory", pos, nil, properties, 1)
-					self.tokens[x .. "_" .. real_y] = { id = token_id, level = level, evo_id = evo_id }
+					self.tokens[col_num .. "_" .. real_y] = { id = token_id, level = level, evo_id = evo_id }
 					
 					-- Отправляем сообщение для установки evo_id после создания
 					msg.post(token_id, "set_evo_id", { evo_id = evo_id })
 					
-					print("BOARD: Created token " .. evo_id .. " level " .. level .. " at grid(" .. x .. ", " .. real_y .. ") id=" .. tostring(token_id))
+					print("BOARD: Created token " .. evo_id .. " level " .. level .. " at grid(" .. col_num .. ", " .. real_y .. ") id=" .. tostring(token_id))
 				end
 			end
 		end
 	end
-
-	-- НОВАЯ СИСТЕМА: Упрощенное состояние перетаскивания
-	self.dragged_token = nil -- ID перетаскиваемой фишки
-	self.dragged_from = nil -- {x, y} исходная позиция
-	self.dragged_level = nil -- уровень перетаскиваемой фишки
-	self.dragged_evo_id = nil -- ID эволюционной цепочки перетаскиваемой фишки
-	self.is_dragging = false -- флаг перетаскивания
-	
-	-- СИСТЕМА ВЫДЕЛЕНИЯ ЯЧЕЕК
-	self.selected_cell = nil -- {x, y} выделенная ячейка (может быть только одна)
-	
-	print("BOARD: Initialization complete")
 	
 	print("BOARD: Initialization complete")
 end
