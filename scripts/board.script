@@ -40,6 +40,66 @@ local function find_cell_at_position(screen_x, screen_y)
 	return nil
 end
 
+-- Найти все свободные клетки на поле
+local function find_empty_cells(self)
+	local empty_cells = {}
+	for x = 1, GRID_WIDTH do
+		for y = 1, GRID_HEIGHT do
+			local token_key = utils.get_token_key(x, y)
+			if not self.tokens[token_key] then
+				table.insert(empty_cells, { x = x, y = y })
+			end
+		end
+	end
+	return empty_cells
+end
+
+-- Найти ближайшую свободную клетку к заданной позиции
+local function find_nearest_empty_cell(self, source_x, source_y)
+	local empty_cells = find_empty_cells(self)
+	if #empty_cells == 0 then
+		return nil -- Нет свободных клеток
+	end
+	
+	local nearest_cell = empty_cells[1]
+	local min_distance = math.huge
+	
+	for _, cell in ipairs(empty_cells) do
+		local distance = math.sqrt((cell.x - source_x)^2 + (cell.y - source_y)^2)
+		if distance < min_distance then
+			min_distance = distance
+			nearest_cell = cell
+		end
+	end
+	
+	return nearest_cell
+end
+
+-- Найти соседние свободные клетки (для ближнего дропа)
+local function find_adjacent_empty_cells(self, source_x, source_y)
+	local adjacent_cells = {}
+	local directions = {
+		{-1, -1}, {-1, 0}, {-1, 1},
+		{0, -1},           {0, 1},
+		{1, -1},  {1, 0},  {1, 1}
+	}
+	
+	for _, dir in ipairs(directions) do
+		local x = source_x + dir[1]
+		local y = source_y + dir[2]
+		
+		-- Проверяем границы поля
+		if x >= 1 and x <= GRID_WIDTH and y >= 1 and y <= GRID_HEIGHT then
+			local token_key = utils.get_token_key(x, y)
+			if not self.tokens[token_key] then
+				table.insert(adjacent_cells, { x = x, y = y })
+			end
+		end
+	end
+	
+	return adjacent_cells
+end
+
 function init(self)
 	msg.post(".", "acquire_input_focus")
 	
@@ -59,6 +119,9 @@ function init(self)
 	
 	-- СИСТЕМА ВЫДЕЛЕНИЯ ЯЧЕЕК
 	self.selected_cell = nil -- {x, y} выделенная ячейка (может быть только одна)
+	
+	-- СИСТЕМА АНИМАЦИИ ПОЛЕТА ФИШЕК
+	self.animating_tokens = {} -- список анимируемых фишек
 
 	-- Загружаем эволюционные таблицы
 	print("BOARD: Loading evolution tables...")
@@ -175,6 +238,28 @@ function update(self, dt)
 		if self.last_mouse_pos then
 			local target_pos = vmath.vector3(self.last_mouse_pos.x, self.last_mouse_pos.y, 1)
 			msg.post(self.dragged_token, "set_position", { position = target_pos })
+		end
+	end
+	
+	-- Обработка анимации полета фишек
+	if self.animating_tokens then
+		local current_time = os.clock()
+		local i = 1
+		while i <= #self.animating_tokens do
+			local anim = self.animating_tokens[i]
+			local elapsed = current_time - anim.start_time
+			local progress = elapsed / anim.duration
+			
+			if progress >= 1.0 then
+				-- Анимация завершена - перемещаем фишку на финальную позицию
+				msg.post(anim.token_id, "set_position", { position = anim.end_pos })
+				table.remove(self.animating_tokens, i)
+			else
+				-- Обновляем позицию
+				local current_pos = anim.start_pos + (anim.end_pos - anim.start_pos) * progress
+				msg.post(anim.token_id, "set_position", { position = current_pos })
+				i = i + 1
+			end
 		end
 	end
 end
@@ -350,11 +435,73 @@ function activate_generator(self, generator_id, cell)
 	
 	if output_token then
 		print("BOARD: Generator " .. generator_id .. " generated: " .. output_token)
-		-- TODO: Здесь будет логика создания фишки на поле
-		-- Пока просто выводим в консоль
+		-- Создаем фишку на поле
+		drop_token_from_generator(self, output_token, cell)
 	else
 		print("BOARD: Generator " .. generator_id .. " failed to generate: " .. (error_msg or "unknown error"))
 	end
+end
+
+-- Функция выброса фишки из генератора
+function drop_token_from_generator(self, token_string, generator_cell)
+	-- Парсим строку токена
+	local evo_id, level = utils.parse_token_string(token_string)
+	if not evo_id or not level then
+		print("BOARD: ERROR - Invalid token string: " .. token_string)
+		return
+	end
+	
+	-- Ищем свободную клетку (обычный дроп - любая свободная клетка)
+	local target_cell = find_nearest_empty_cell(self, generator_cell.x, generator_cell.y)
+	if not target_cell then
+		print("BOARD: No empty cells available for drop")
+		return
+	end
+	
+	-- Создаем фишку у генератора (начальная позиция для анимации)
+	local start_pos = grid_to_screen(generator_cell.x, generator_cell.y)
+	start_pos.z = 1
+	local properties = { level = level, grid_x = target_cell.x, grid_y = target_cell.y }
+	local token_id = factory.create("#token_factory", start_pos, nil, properties, 1)
+	
+	-- Сохраняем фишку в данных (уже на целевой позиции)
+	local token_key = utils.get_token_key(target_cell.x, target_cell.y)
+	self.tokens[token_key] = { id = token_id, level = level, evo_id = evo_id }
+	
+	-- Отправляем evo_id через сообщение
+	msg.post(token_id, "set_evo_id", { evo_id = evo_id })
+	
+	-- Создаем анимацию полета от генератора к целевой клетке
+	create_drop_animation(self, token_id, generator_cell, target_cell)
+	
+	print("BOARD: Token dropped: " .. token_string .. " at grid(" .. target_cell.x .. ", " .. target_cell.y .. ")")
+end
+
+-- Функция создания анимации полета фишки
+function create_drop_animation(self, token_id, from_cell, to_cell)
+	-- Начальная позиция (у генератора)
+	local start_pos = grid_to_screen(from_cell.x, from_cell.y)
+	start_pos.z = 1
+	
+	-- Конечная позиция (целевая клетка)
+	local end_pos = grid_to_screen(to_cell.x, to_cell.y)
+	end_pos.z = 1
+	
+	-- Анимация полета
+	local duration = 0.17 -- секунды (ускорено в 3 раза)
+	local start_time = os.clock()
+	
+	-- Добавляем в список анимируемых фишек
+	table.insert(self.animating_tokens, {
+		token_id = token_id,
+		start_pos = start_pos,
+		end_pos = end_pos,
+		start_time = start_time,
+		duration = duration
+	})
+	
+	-- Сразу перемещаем фишку на начальную позицию для анимации
+	msg.post(token_id, "set_position", { position = start_pos })
 end
 
 -- НОВАЯ СИСТЕМА: Функция выполнения мерджа
