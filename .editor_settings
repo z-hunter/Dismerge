@@ -46,10 +46,6 @@
         :cljfx-form-view
       ]
       [
-        "/main/board.go"
-        :scene
-      ]
-      [
         "/main/token.go"
         :scene
       ]
@@ -68,10 +64,6 @@
       [
         "/main/ui_label.go"
         :scene
-      ]
-      [
-        "/scripts/board.script"
-        :code
       ]
       [
         "/scripts/token.script"
@@ -103,6 +95,14 @@
       ]
       [
         "/config/gen.csv"
+        :code
+      ]
+      [
+        "/main/board.go"
+        :scene
+      ]
+      [
+        "/scripts/board.script"
         :code
       ]
     ]

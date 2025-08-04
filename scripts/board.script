@@ -33,10 +33,12 @@ local function find_cell_at_position(screen_x, screen_y)
 			local cell_pos = grid_to_screen(x, y)
 			local distance = vmath.length(vmath.vector3(screen_x, screen_y, 0) - cell_pos)
 			if distance <= CELL_SIZE / 2 then
+				print("BOARD: Found cell at (" .. x .. ", " .. y .. ") for screen pos (" .. screen_x .. ", " .. screen_y .. ") distance: " .. distance)
 				return { x = x, y = y }
 			end
 		end
 	end
+	print("BOARD: No cell found for screen pos (" .. screen_x .. ", " .. screen_y .. ")")
 	return nil
 end
 
@@ -119,9 +121,13 @@ function init(self)
 	
 	-- СИСТЕМА ВЫДЕЛЕНИЯ ЯЧЕЕК
 	self.selected_cell = nil -- {x, y} выделенная ячейка (может быть только одна)
+	self.pre_drag_selection = nil -- {x, y} выделение перед началом перетаскивания
 	
 	-- СИСТЕМА АНИМАЦИИ ПОЛЕТА ФИШЕК
 	self.animating_tokens = {} -- список анимируемых фишек
+	
+	-- СИСТЕМА ПОТЕНЦИАЛЬНОГО ПЕРЕТАСКИВАНИЯ
+	self.potential_drag = nil -- информация о потенциальном перетаскивании
 
 	-- Загружаем эволюционные таблицы
 	print("BOARD: Loading evolution tables...")
@@ -241,6 +247,16 @@ function update(self, dt)
 		end
 	end
 	
+	-- Проверка начала перетаскивания при движении мыши
+	if self.potential_drag and self.last_mouse_pos then
+		local distance = vmath.length(vmath.vector3(self.last_mouse_pos.x, self.last_mouse_pos.y, 0) - vmath.vector3(self.potential_drag.start_pos.x, self.potential_drag.start_pos.y, 0))
+		if distance > 10 then -- Если мышь двигалась больше 10 пикселей
+			-- Это было перетаскивание - начинаем его
+			start_drag(self, self.potential_drag.token_id, self.potential_drag.grid_x, self.potential_drag.grid_y, self.potential_drag.level, self.potential_drag.evo_id)
+			self.potential_drag = nil
+		end
+	end
+	
 	-- Обработка анимации полета фишек
 	if self.animating_tokens then
 		local current_time = os.clock()
@@ -266,26 +282,38 @@ end
 
 function on_message(self, message_id, message, sender)
 	if message_id == hash("cell_clicked") then
-		print("BOARD: Cell clicked at grid(" .. message.grid_x .. ", " .. message.grid_y .. ")")
-		
 		-- Проверяем, есть ли фишка в этой ячейке
 		local token_key = utils.get_token_key(message.grid_x, message.grid_y)
 		local token = self.tokens[token_key]
 		
 		if token then
-			print("BOARD: Found token " .. token.evo_id .. " level " .. token.level .. " at grid(" .. message.grid_x .. ", " .. message.grid_y .. ")")
-			
-			-- Если уже есть выделенная ячейка и это та же ячейка - снимаем выделение
+			-- Если уже есть выделенная ячейка и это та же ячейка - это повторное выделение
 			if self.selected_cell and self.selected_cell.x == message.grid_x and self.selected_cell.y == message.grid_y then
-				clear_cell_selection(self)
+				-- Проверяем, не генератор ли это - если да, то активируем
+				local generator_id = utils.create_token_string(token.evo_id, token.level)
+				if generator_config.is_generator(generator_id) then
+					print("BOARD: Generator activated on second click: " .. generator_id .. " at grid(" .. message.grid_x .. ", " .. message.grid_y .. ")")
+					activate_generator(self, generator_id, { x = message.grid_x, y = message.grid_y })
+				else
+					-- Не генератор - просто снимаем выделение
+					clear_cell_selection(self)
+				end
 			else
-				-- Выделяем ячейку с фишкой
+				-- Первое выделение ячейки с фишкой
 				select_cell(self, message.grid_x, message.grid_y)
 			end
 		else
 			-- Клик на пустую ячейку - снимаем выделение
 			clear_cell_selection(self)
 		end
+	elseif message_id == hash("debug_get_state") then
+		-- Отладочное сообщение для получения состояния доски
+		print("BOARD: DEBUG - Current state:")
+		print("  Selected cell: " .. (self.selected_cell and ("(" .. self.selected_cell.x .. ", " .. self.selected_cell.y .. ")") or "none"))
+		print("  Pre-drag selection: " .. (self.pre_drag_selection and ("(" .. self.pre_drag_selection.x .. ", " .. self.pre_drag_selection.y .. ")") or "none"))
+		print("  Is dragging: " .. tostring(self.is_dragging))
+		print("  Dragged token: " .. tostring(self.dragged_token))
+		print("  Tokens count: " .. (function() local count = 0 for _ in pairs(self.tokens) do count = count + 1 end return count end)())
 	end
 end
 
@@ -310,18 +338,38 @@ function on_input(self, action_id, action)
 					local token = self.tokens[token_key]
 					
 					if token then
-						print("BOARD: Starting drag of token " .. token.evo_id .. " level " .. token.level .. " at grid(" .. clicked_cell.x .. ", " .. clicked_cell.y .. ")")
-						-- Начинаем перетаскивание фишки
-						start_drag(self, token.id, clicked_cell.x, clicked_cell.y, token.level, token.evo_id)
+						-- Сохраняем информацию о потенциальном перетаскивании
+						self.potential_drag = {
+							token_id = token.id,
+							grid_x = clicked_cell.x,
+							grid_y = clicked_cell.y,
+							level = token.level,
+							evo_id = token.evo_id,
+							start_pos = { x = action.x, y = action.y }
+						}
+					end
+					
+					-- Отправляем сообщение о клике на ячейку (для выделения)
+					if self.cells[clicked_cell.x] and self.cells[clicked_cell.x][clicked_cell.y] then
+						local cell_id = self.cells[clicked_cell.x][clicked_cell.y].id
+						print("BOARD: Sending clicked message to cell ID: " .. tostring(cell_id) .. " at (" .. clicked_cell.x .. ", " .. clicked_cell.y .. ")")
+						msg.post(cell_id, "clicked", {
+							grid_x = clicked_cell.x,
+							grid_y = clicked_cell.y
+						})
 					else
-						-- Клик на пустую ячейку - снимаем выделение
-						clear_cell_selection(self)
+						print("BOARD: ERROR - Cell not found in self.cells at (" .. clicked_cell.x .. ", " .. clicked_cell.y .. ")")
 					end
 				end
 			end
-		elseif action.released and self.dragged_token then
-			-- НОВАЯ СИСТЕМА: Обработка отпускания фишки
-			handle_token_release(self, action.x, action.y)
+		elseif action.released then
+			if self.dragged_token then
+				-- Обработка отпускания перетаскиваемой фишки
+				handle_token_release(self, action.x, action.y)
+			elseif self.potential_drag then
+				-- Очищаем потенциальное перетаскивание
+				self.potential_drag = nil
+			end
 		end
 	end
 end
@@ -333,6 +381,8 @@ function select_cell(self, grid_x, grid_y)
 	local token = self.tokens[token_key]
 	
 	if token then
+		print("BOARD: Selecting cell (" .. grid_x .. ", " .. grid_y .. ") with token " .. token.evo_id .. " level " .. token.level)
+		
 		-- Снимаем предыдущее выделение
 		if self.selected_cell then
 			clear_cell_selection(self)
@@ -342,33 +392,38 @@ function select_cell(self, grid_x, grid_y)
 		self.selected_cell = { x = grid_x, y = grid_y }
 		
 		-- Визуально выделяем ячейку (изменяем цвет тайла)
-		local cell_id = self.cells[grid_x][grid_y].id
-		msg.post(cell_id, "set_highlighted", { highlighted = true })
+		if self.cells[grid_x] and self.cells[grid_x][grid_y] then
+			local cell_id = self.cells[grid_x][grid_y].id
+			print("BOARD: Sending set_highlighted(true) to cell ID: " .. tostring(cell_id))
+			msg.post(cell_id, "set_highlighted", { highlighted = true })
+		else
+			print("BOARD: ERROR - Cell not found at (" .. grid_x .. ", " .. grid_y .. ")")
+		end
 		
 		-- Показываем информацию о фишке
 		show_token_info(self, token.evo_id, token.level)
-		
-		-- Проверяем, не генератор ли это - если да, то активируем
-		local generator_id = utils.create_token_string(token.evo_id, token.level)
-		if generator_config.is_generator(generator_id) then
-			print("BOARD: Generator activated: " .. generator_id .. " at grid(" .. grid_x .. ", " .. grid_y .. ")")
-			activate_generator(self, generator_id, { x = grid_x, y = grid_y })
-		end
+	else
+		print("BOARD: Cannot select cell (" .. grid_x .. ", " .. grid_y .. ") - no token found")
 	end
 end
 
 -- СИСТЕМА ВЫДЕЛЕНИЯ ЯЧЕЕК: Функция снятия выделения
 function clear_cell_selection(self)
 	if self.selected_cell then
-		local cell_id = self.cells[self.selected_cell.x][self.selected_cell.y].id
-		print("BOARD: Sending set_highlighted(false) to cell_id=" .. tostring(cell_id) .. " at grid(" .. self.selected_cell.x .. ", " .. self.selected_cell.y .. ")")
-		msg.post(cell_id, "set_highlighted", { highlighted = false })
+		print("BOARD: Clearing selection from cell (" .. self.selected_cell.x .. ", " .. self.selected_cell.y .. ")")
+		
+		if self.cells[self.selected_cell.x] and self.cells[self.selected_cell.x][self.selected_cell.y] then
+			local cell_id = self.cells[self.selected_cell.x][self.selected_cell.y].id
+			print("BOARD: Sending set_highlighted(false) to cell ID: " .. tostring(cell_id))
+			msg.post(cell_id, "set_highlighted", { highlighted = false })
+		end
 		
 		-- Скрываем информацию о фишке
 		hide_token_info(self)
 		
-		print("BOARD: Cell selection cleared at grid(" .. self.selected_cell.x .. ", " .. self.selected_cell.y .. ")")
 		self.selected_cell = nil
+	else
+		print("BOARD: No selection to clear")
 	end
 end
 
@@ -380,8 +435,19 @@ function start_drag(self, token_id, grid_x, grid_y, level, evo_id)
 	self.dragged_evo_id = evo_id
 	self.is_dragging = true
 	
-	-- Выделяем ячейку при начале перетаскивания
-	select_cell(self, grid_x, grid_y)
+	-- Сохраняем информацию о выделении перед началом перетаскивания
+	if self.selected_cell then
+		self.pre_drag_selection = { x = self.selected_cell.x, y = self.selected_cell.y }
+		print("BOARD: Saved pre-drag selection: (" .. self.pre_drag_selection.x .. ", " .. self.pre_drag_selection.y .. ")")
+	else
+		self.pre_drag_selection = nil
+		print("BOARD: No selection to save before drag")
+	end
+	
+	-- Снимаем выделение при начале перетаскивания (не вызываем select_cell)
+	if self.selected_cell then
+		clear_cell_selection(self)
+	end
 	
 	-- Удаляем фишку из исходной позиции в данных
 	local token_key = utils.get_token_key(grid_x, grid_y)
@@ -540,6 +606,14 @@ function perform_merge(self, target_cell, target_token, target_key)
 		local item_name = evolution_tables.get_item_name(merge_result.evo_id, merge_result.level)
 		print("BOARD: Merge completed - new token " .. merge_result.evo_id .. " level " .. merge_result.level .. " (" .. item_name .. ") at (" .. target_cell.x .. ", " .. target_cell.y .. ")")
 		
+		-- Если была выделена одна из исходных позиций, выделяем новую фишку
+		if self.pre_drag_selection and 
+		   (self.pre_drag_selection.x == self.dragged_from.x and self.pre_drag_selection.y == self.dragged_from.y) or
+		   (self.pre_drag_selection.x == target_cell.x and self.pre_drag_selection.y == target_cell.y) then
+			print("BOARD: Selecting merged token at (" .. target_cell.x .. ", " .. target_cell.y .. ")")
+			select_cell(self, target_cell.x, target_cell.y)
+		end
+		
 		-- Проверяем выделение после мерджа
 		check_selection_after_drag(self)
 	else
@@ -563,6 +637,14 @@ function perform_move(self, target_cell)
 	
 	print("BOARD: Move completed - token " .. self.dragged_evo_id .. " level " .. self.dragged_level .. " moved to (" .. target_cell.x .. ", " .. target_cell.y .. ")")
 	
+	-- Если была выделена исходная позиция, выделяем новую позицию
+	if self.pre_drag_selection and 
+	   self.pre_drag_selection.x == self.dragged_from.x and 
+	   self.pre_drag_selection.y == self.dragged_from.y then
+		print("BOARD: Moving selection from (" .. self.dragged_from.x .. ", " .. self.dragged_from.y .. ") to (" .. target_cell.x .. ", " .. target_cell.y .. ")")
+		select_cell(self, target_cell.x, target_cell.y)
+	end
+	
 	-- Проверяем выделение после перемещения
 	check_selection_after_drag(self)
 end
@@ -580,20 +662,53 @@ function perform_return(self)
 	
 	print("BOARD: Return completed - token " .. self.dragged_evo_id .. " level " .. self.dragged_level .. " returned to (" .. self.dragged_from.x .. ", " .. self.dragged_from.y .. ")")
 	
-	-- При возврате выделение остается (фишка вернулась на то же место)
+	-- Восстанавливаем выделение если фишка вернулась на то же место
+	if self.pre_drag_selection and 
+	   self.pre_drag_selection.x == self.dragged_from.x and 
+	   self.pre_drag_selection.y == self.dragged_from.y then
+		-- Восстанавливаем выделение
+		select_cell(self, self.dragged_from.x, self.dragged_from.y)
+	end
+	
+	-- Проверяем выделение после возврата
+	check_selection_after_drag(self)
 end
 
 -- СИСТЕМА ВЫДЕЛЕНИЯ: Функция проверки выделения после перетаскивания
 function check_selection_after_drag(self)
+	print("BOARD: Checking selection after drag - current selection: " .. (self.selected_cell and ("(" .. self.selected_cell.x .. ", " .. self.selected_cell.y .. ")") or "none"))
+	print("BOARD: Pre-drag selection: " .. (self.pre_drag_selection and ("(" .. self.pre_drag_selection.x .. ", " .. self.pre_drag_selection.y .. ")") or "none"))
+	print("BOARD: Dragged from: " .. (self.dragged_from and ("(" .. self.dragged_from.x .. ", " .. self.dragged_from.y .. ")") or "none"))
+	
+	-- Проверяем, есть ли выделение после перетаскивания
 	if self.selected_cell then
 		-- Проверяем, есть ли фишка в выделенной ячейке
 		local token_key = utils.get_token_key(self.selected_cell.x, self.selected_cell.y)
 		local token = self.tokens[token_key]
 		
 		if not token then
+			print("BOARD: Token not found in selected cell - clearing selection")
 			-- Фишки больше нет в выделенной ячейке - снимаем выделение
 			clear_cell_selection(self)
+		else
+			print("BOARD: Token found in selected cell - keeping selection")
 		end
+	elseif self.pre_drag_selection then
+		print("BOARD: No current selection, checking pre-drag selection (" .. self.pre_drag_selection.x .. ", " .. self.pre_drag_selection.y .. ")")
+		-- Если было выделение до перетаскивания, но сейчас его нет
+		-- Проверяем, есть ли фишка в той ячейке, которая была выделена
+		local token_key = utils.get_token_key(self.pre_drag_selection.x, self.pre_drag_selection.y)
+		local token = self.tokens[token_key]
+		
+		if token then
+			print("BOARD: Restoring selection to pre-drag position")
+			-- Восстанавливаем выделение
+			select_cell(self, self.pre_drag_selection.x, self.pre_drag_selection.y)
+		else
+			print("BOARD: No token found at pre-drag position - cannot restore selection")
+		end
+	else
+		print("BOARD: No selection to check")
 	end
 end
 
@@ -609,6 +724,7 @@ function clear_drag_state(self)
 	self.dragged_evo_id = nil
 	self.is_dragging = false
 	self.last_mouse_pos = nil
+	self.pre_drag_selection = nil -- Очищаем сохраненное выделение
 	
 	print("BOARD: Drag state cleared")
 end

@@ -18,13 +18,14 @@ function on_message(self, message_id, message, sender)
 	if message_id == hash("clicked") then
 		print("CELL: Clicked at grid(" .. self.grid_x .. ", " .. self.grid_y .. ")")
 		-- Передаем информацию о нажатии на доску
-		msg.post("/board", "cell_clicked", {
+		msg.post("main:/board_factorys#board", "cell_clicked", {
 			grid_x = self.grid_x,
 			grid_y = self.grid_y,
 			cell_id = go.get_id()
 		})
 	elseif message_id == hash("set_highlighted") then
 		-- Обработка выделения ячейки
+		print("CELL: Setting highlighted=" .. tostring(message.highlighted) .. " for grid(" .. self.grid_x .. ", " .. self.grid_y .. ")")
 		if message.highlighted then
 			-- Выделяем ячейку - делаем её желтоватой
 			go.set("#sprite", "tint", vmath.vector4(1.0, 1.0, 0.7, 1.0))
