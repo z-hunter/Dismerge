@@ -2,6 +2,8 @@
 local evolution_tables = require("scripts.evolution_tables")
 -- Подключаем модуль конфигурации поля
 local field_config = require("scripts.field_config")
+-- Подключаем модуль конфигурации генераторов
+local generator_config = require("scripts.generator_config")
 -- Подключаем утилиты
 local utils = require("scripts.utils")
 
@@ -40,6 +42,9 @@ end
 
 function init(self)
 	msg.post(".", "acquire_input_focus")
+	
+	-- Инициализируем генератор случайных чисел
+	math.randomseed(os.time())
 
 	-- Инициализируем основные структуры данных
 	self.tokens = {}
@@ -65,6 +70,24 @@ function init(self)
 		print("BOARD: ERROR - Failed to load evolution tables")
 		return
 	end
+
+	-- Загружаем конфигурацию генераторов
+	print("BOARD: Loading generator configuration...")
+	local generators = generator_config.load_generator_config()
+	if not generators then
+		print("BOARD: ERROR - Failed to load generator configuration")
+		return
+	end
+	
+	-- Валидируем конфигурацию генераторов
+	local is_valid, error_msg = generator_config.validate_generator_config(evolution_tables)
+	if not is_valid then
+		print("BOARD: ERROR - Generator configuration validation failed: " .. error_msg)
+		return
+	end
+	
+	-- Выводим отладочную информацию о генераторах
+	generator_config.debug_print_config()
 
 	-- Загружаем конфигурацию поля
 	print("BOARD: Loading field configuration...")
@@ -126,11 +149,7 @@ function init(self)
 					-- Фишки рисуются поверх ячеек (z = 1)
 					pos.z = 1
 					
-					print("BOARD: Creating token with evo_id='" .. evo_id .. "' level=" .. level .. " at grid(" .. col_num .. ", " .. real_y .. ")")
-					
 					local properties = { level = level, grid_x = col_num, grid_y = real_y }
-					print("BOARD: Factory properties: level=" .. tostring(properties.level) .. " grid_x=" .. tostring(properties.grid_x) .. " grid_y=" .. tostring(properties.grid_y))
-					
 					local token_id = factory.create("#token_factory", pos, nil, properties, 1)
 					local token_key = utils.get_token_key(col_num, real_y)
 					self.tokens[token_key] = { id = token_id, level = level, evo_id = evo_id }
@@ -156,10 +175,6 @@ function update(self, dt)
 		if self.last_mouse_pos then
 			local target_pos = vmath.vector3(self.last_mouse_pos.x, self.last_mouse_pos.y, 1)
 			msg.post(self.dragged_token, "set_position", { position = target_pos })
-			-- Отладочная информация
-			print("BOARD: Moving token to (" .. self.last_mouse_pos.x .. ", " .. self.last_mouse_pos.y .. ")")
-		else
-			print("BOARD: No mouse position available")
 		end
 	end
 end
@@ -228,30 +243,32 @@ end
 
 -- СИСТЕМА ВЫДЕЛЕНИЯ ЯЧЕЕК: Функция выделения ячейки
 function select_cell(self, grid_x, grid_y)
-	-- Снимаем предыдущее выделение
-	if self.selected_cell then
-		clear_cell_selection(self)
-	end
-	
 	-- Проверяем, есть ли фишка в этой ячейке
 	local token_key = utils.get_token_key(grid_x, grid_y)
 	local token = self.tokens[token_key]
 	
 	if token then
+		-- Снимаем предыдущее выделение
+		if self.selected_cell then
+			clear_cell_selection(self)
+		end
+		
 		-- Выделяем ячейку с фишкой
 		self.selected_cell = { x = grid_x, y = grid_y }
 		
 		-- Визуально выделяем ячейку (изменяем цвет тайла)
 		local cell_id = self.cells[grid_x][grid_y].id
-		print("BOARD: Sending set_highlighted(true) to cell_id=" .. tostring(cell_id) .. " at grid(" .. grid_x .. ", " .. grid_y .. ")")
 		msg.post(cell_id, "set_highlighted", { highlighted = true })
 		
 		-- Показываем информацию о фишке
 		show_token_info(self, token.evo_id, token.level)
 		
-		print("BOARD: Cell selected at grid(" .. grid_x .. ", " .. grid_y .. ")")
-	else
-		print("BOARD: Cannot select empty cell at grid(" .. grid_x .. ", " .. grid_y .. ")")
+		-- Проверяем, не генератор ли это - если да, то активируем
+		local generator_id = utils.create_token_string(token.evo_id, token.level)
+		if generator_config.is_generator(generator_id) then
+			print("BOARD: Generator activated: " .. generator_id .. " at grid(" .. grid_x .. ", " .. grid_y .. ")")
+			activate_generator(self, generator_id, { x = grid_x, y = grid_y })
+		end
 	end
 end
 
@@ -326,6 +343,20 @@ function handle_token_release(self, mouse_x, mouse_y)
 	clear_drag_state(self)
 end
 
+-- Функция активации генератора
+function activate_generator(self, generator_id, cell)
+	-- Получаем случайную фишку из генератора
+	local output_token, error_msg = generator_config.get_random_manual_output(generator_id)
+	
+	if output_token then
+		print("BOARD: Generator " .. generator_id .. " generated: " .. output_token)
+		-- TODO: Здесь будет логика создания фишки на поле
+		-- Пока просто выводим в консоль
+	else
+		print("BOARD: Generator " .. generator_id .. " failed to generate: " .. (error_msg or "unknown error"))
+	end
+end
+
 -- НОВАЯ СИСТЕМА: Функция выполнения мерджа
 function perform_merge(self, target_cell, target_token, target_key)
 	-- Удаляем старые фишки
@@ -342,9 +373,11 @@ function perform_merge(self, target_cell, target_token, target_key)
 		local new_token_id = factory.create("#token_factory", pos, nil, { 
 			level = merge_result.level, 
 			grid_x = target_cell.x, 
-			grid_y = target_cell.y, 
-			evo_id = merge_result.evo_id 
+			grid_y = target_cell.y
 		}, 1)
+		
+		-- Отправляем evo_id через сообщение (так как строки нельзя передавать как свойства)
+		msg.post(new_token_id, "set_evo_id", { evo_id = merge_result.evo_id })
 		
 		-- Обновляем данные
 		self.tokens[target_key] = { 
@@ -435,19 +468,14 @@ end
 
 -- Функция для отображения информации о фишке
 function show_token_info(self, evo_id, level)
-	print("BOARD: show_token_info вызвана с evo_id=" .. tostring(evo_id) .. " level=" .. tostring(level))
-	
 	local chain = evolution_tables.get_evolution_chain(evo_id)
 	local item_name = evolution_tables.get_item_name(evo_id, level)
-	
-	print("BOARD: chain=" .. tostring(chain) .. " item_name=" .. tostring(item_name))
 	
 	if chain and item_name then
 		local info_text = chain.name .. " - Уровень " .. level .. " - " .. item_name
 		print("BOARD: INFO: " .. info_text)
 		
 		-- Отправляем сообщение в UI для отображения информации
-		print("BOARD: Отправляем сообщение в UI")
 		msg.post("main:/ui", "show_token_info", {
 			chain_name = chain.name,
 			level = level,

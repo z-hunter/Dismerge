@@ -93,6 +93,18 @@
         "/main/ui.go"
         :scene
       ]
+      [
+        "/config/evo.csv"
+        :code
+      ]
+      [
+        "/config/init.csv"
+        :code
+      ]
+      [
+        "/config/gen.csv"
+        :code
+      ]
     ]
   }
 }

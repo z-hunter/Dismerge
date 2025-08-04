@@ -16,7 +16,7 @@ function M.load_initial_field_config()
     local field_names = {
         ["lines"] = true,
         ["1"] = true, ["2"] = true, ["3"] = true, ["4"] = true, ["5"] = true,
-        ["6"] = true, ["7"] = true, ["8"] = true
+        ["6"] = true, ["7"] = true
     }
     
     -- Парсим CSV файл
@@ -36,8 +36,8 @@ function M.load_initial_field_config()
             -- Создаем строку для этого номера линии
             field_config[line_num] = {}
             
-            -- Заполняем столбцы (1-8)
-            for col = 1, 8 do
+            -- Заполняем столбцы (1-7)
+            for col = 1, 7 do
                 local token_str = record[tostring(col)]
                 local evo_id, level = utils.parse_token_string(token_str)
                 

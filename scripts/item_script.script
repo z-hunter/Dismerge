@@ -7,7 +7,6 @@ function init(self)
 	go.set_scale(vmath.vector3(1.0, 1.0, 1.0))
 
 	-- Ячейка доски - статичный элемент
-	print("CELL INIT: grid(" .. self.grid_x .. ", " .. self.grid_y .. ") id=" .. tostring(go.get_id()))
 end
 
 -- Явно переопределяем on_input чтобы ничего не делать
@@ -26,15 +25,12 @@ function on_message(self, message_id, message, sender)
 		})
 	elseif message_id == hash("set_highlighted") then
 		-- Обработка выделения ячейки
-		print("CELL: Received set_highlighted message: highlighted=" .. tostring(message.highlighted) .. " at grid(" .. self.grid_x .. ", " .. self.grid_y .. ")")
 		if message.highlighted then
 			-- Выделяем ячейку - делаем её желтоватой
 			go.set("#sprite", "tint", vmath.vector4(1.0, 1.0, 0.7, 1.0))
-			print("CELL: Highlighted at grid(" .. self.grid_x .. ", " .. self.grid_y .. ")")
 		else
 			-- Снимаем выделение - возвращаем нормальный цвет
 			go.set("#sprite", "tint", vmath.vector4(1.0, 1.0, 1.0, 1.0))
-			print("CELL: Unhighlighted at grid(" .. self.grid_x .. ", " .. self.grid_y .. ")")
 		end
 	end
 end

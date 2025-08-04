@@ -1,0 +1,306 @@
+-- Generator Configuration Module
+-- Модуль для загрузки конфигурации генераторов из CSV файла
+
+local M = {}
+
+-- Импортируем универсальный CSV парсер
+local csv_parser = require("scripts.csv_parser")
+-- Импортируем утилиты
+local utils = require("scripts.utils")
+
+-- Структура для хранения данных генераторов
+local generators = {}
+
+-- Функция для загрузки конфигурации генераторов
+function M.load_generator_config()
+    local file_path = "config/gen.csv"
+    
+    -- Определяем поля, которые нужно извлечь из CSV
+    local field_names = {
+        ["id"] = true,
+        ["comment"] = true,
+        ["Dispose after"] = true,
+        ["Dispose to"] = true,
+        ["M:Capacity"] = true,
+        ["M:Reload(sec)"] = true,
+        ["M:Output"] = true,
+        ["M:Rate"] = true,
+        ["A:Capacity"] = true,
+        ["A:Timer(sec)"] = true,
+        ["A:Reload(sec)"] = true,
+        ["A:Output"] = true,
+        ["A:Rate"] = true
+    }
+    
+    -- Парсим CSV файл
+    local records = csv_parser.parse_csv_file(file_path, field_names)
+    if not records then
+        print("GENERATOR CONFIG: ERROR - Failed to parse generator configuration file: " .. file_path)
+        return nil
+    end
+    
+    -- Группируем записи по ID генератора
+    local current_generator = nil
+    
+    for _, record in ipairs(records) do
+        local generator_id = record["id"]
+        
+        -- Если есть ID, начинаем новый генератор
+        if generator_id and generator_id ~= "" then
+            -- Сохраняем предыдущий генератор
+            if current_generator then
+                generators[current_generator.id] = current_generator
+            end
+            
+            -- Создаем новый генератор
+            local evo_id, level = utils.parse_token_string(generator_id)
+            if evo_id and level then
+                current_generator = {
+                    id = generator_id,
+                    evo_id = evo_id,
+                    level = level,
+                    comment = record["comment"] or "",
+                    dispose_after = csv_parser.get_field_value(record, "Dispose after", "number"),
+                    dispose_to = record["Dispose to"] or "",
+                    manual = {
+                        capacity = csv_parser.get_field_value(record, "M:Capacity", "number"),
+                        reload_sec = csv_parser.get_field_value(record, "M:Reload(sec)", "number"),
+                        outputs = {},
+                        rates = {},
+                        current_capacity = csv_parser.get_field_value(record, "M:Capacity", "number"), -- Инициализируем текущую емкость
+                        is_reloading = false
+                    },
+                    automatic = {
+                        capacity = csv_parser.get_field_value(record, "A:Capacity", "number"),
+                        timer_sec = csv_parser.get_field_value(record, "A:Timer(sec)", "number"),
+                        reload_sec = csv_parser.get_field_value(record, "A:Reload(sec)", "number"),
+                        outputs = {},
+                        rates = {}
+                    }
+                }
+            else
+                print("GENERATOR CONFIG: WARNING - Invalid generator ID: " .. generator_id)
+                current_generator = nil
+            end
+        end
+        
+        -- Добавляем выходы к текущему генератору
+        if current_generator then
+            -- Ручная генерация
+            local m_output = record["M:Output"]
+            local m_rate = csv_parser.get_field_value(record, "M:Rate", "number")
+            if m_output and m_output ~= "" and m_rate then
+                table.insert(current_generator.manual.outputs, m_output)
+                table.insert(current_generator.manual.rates, m_rate)
+            end
+            
+            -- Автоматическая генерация
+            local a_output = record["A:Output"]
+            local a_rate = csv_parser.get_field_value(record, "A:Rate", "number")
+            if a_output and a_output ~= "" and a_rate then
+                table.insert(current_generator.automatic.outputs, a_output)
+                table.insert(current_generator.automatic.rates, a_rate)
+            end
+        end
+    end
+    
+    -- Сохраняем последний генератор
+    if current_generator then
+        generators[current_generator.id] = current_generator
+    end
+    
+    local count = 0
+    for _ in pairs(generators) do
+        count = count + 1
+    end
+    print("GENERATOR CONFIG: Successfully loaded " .. count .. " generators")
+    return generators
+end
+
+-- Функция для получения генератора по ID
+function M.get_generator(generator_id)
+    return generators[generator_id]
+end
+
+-- Функция для получения генератора по evo_id и level
+function M.get_generator_by_evo(evo_id, level)
+    local generator_id = utils.create_token_string(evo_id, level)
+    return generators[generator_id]
+end
+
+-- Функция для проверки, является ли токен генератором
+function M.is_generator(token_id)
+    return generators[token_id] ~= nil
+end
+
+-- Функция для получения случайной фишки из генератора по вероятностям (ручная активация)
+function M.get_random_manual_output(generator_id)
+    local generator = generators[generator_id]
+    if not generator then
+        return nil, "Generator not found"
+    end
+    
+    -- Проверяем, есть ли ручная генерация
+    if not generator.manual.capacity or #generator.manual.outputs == 0 then
+        return nil, "No manual generation configured"
+    end
+    
+    -- Проверяем, не на перезарядке ли генератор
+    if generator.manual.is_reloading then
+        return nil, "Generator is reloading"
+    end
+    
+    -- Проверяем емкость
+    if generator.manual.current_capacity and generator.manual.current_capacity <= 0 then
+        return nil, "Generator capacity exhausted"
+    end
+    
+    -- Вычисляем общую сумму вероятностей
+    local total_rate = 0
+    for _, rate in ipairs(generator.manual.rates) do
+        total_rate = total_rate + rate
+    end
+    
+    if total_rate <= 0 then
+        return nil, "No valid rates found"
+    end
+    
+    -- Генерируем случайное число от 1 до total_rate
+    local random_value = math.random(1, total_rate)
+    
+    -- Определяем, какая фишка выпала
+    local current_sum = 0
+    for i, rate in ipairs(generator.manual.rates) do
+        current_sum = current_sum + rate
+        if random_value <= current_sum then
+            return generator.manual.outputs[i], nil
+        end
+    end
+    
+    -- На всякий случай возвращаем последнюю фишку
+    return generator.manual.outputs[#generator.manual.outputs], nil
+end
+
+-- Функция для валидации конфигурации генераторов
+function M.validate_generator_config(evolution_tables)
+    local errors = {}
+    
+    for generator_id, generator in pairs(generators) do
+        -- Проверяем существование эволюционной цепочки
+        local chain = evolution_tables.get_evolution_chain(generator.evo_id)
+        if not chain then
+            table.insert(errors, "Generator '" .. generator_id .. "' references non-existent evolution chain '" .. generator.evo_id .. "'")
+        elseif generator.level > chain.max_grade then
+            table.insert(errors, "Generator '" .. generator_id .. "' level " .. generator.level .. " exceeds max grade " .. chain.max_grade)
+        end
+        
+        -- Проверяем dispose_to
+        if generator.dispose_to and generator.dispose_to ~= "" then
+            local dispose_evo_id, dispose_level = utils.parse_token_string(generator.dispose_to)
+            if dispose_evo_id and dispose_level then
+                local dispose_chain = evolution_tables.get_evolution_chain(dispose_evo_id)
+                if not dispose_chain then
+                    table.insert(errors, "Generator '" .. generator_id .. "' dispose_to references non-existent chain '" .. dispose_evo_id .. "'")
+                elseif dispose_level > dispose_chain.max_grade then
+                    table.insert(errors, "Generator '" .. generator_id .. "' dispose_to level " .. dispose_level .. " exceeds max grade " .. dispose_chain.max_grade)
+                end
+            else
+                table.insert(errors, "Generator '" .. generator_id .. "' has invalid dispose_to format: " .. generator.dispose_to)
+            end
+        end
+        
+        -- Проверяем выходы ручной генерации
+        for i, output in ipairs(generator.manual.outputs) do
+            local output_evo_id, output_level = utils.parse_token_string(output)
+            if output_evo_id and output_level then
+                local output_chain = evolution_tables.get_evolution_chain(output_evo_id)
+                if not output_chain then
+                    table.insert(errors, "Generator '" .. generator_id .. "' manual output " .. i .. " references non-existent chain '" .. output_evo_id .. "'")
+                elseif output_level > output_chain.max_grade then
+                    table.insert(errors, "Generator '" .. generator_id .. "' manual output " .. i .. " level " .. output_level .. " exceeds max grade " .. output_chain.max_grade)
+                end
+            else
+                table.insert(errors, "Generator '" .. generator_id .. "' has invalid manual output format: " .. output)
+            end
+        end
+        
+        -- Проверяем выходы автоматической генерации
+        for i, output in ipairs(generator.automatic.outputs) do
+            local output_evo_id, output_level = utils.parse_token_string(output)
+            if output_evo_id and output_level then
+                local output_chain = evolution_tables.get_evolution_chain(output_evo_id)
+                if not output_chain then
+                    table.insert(errors, "Generator '" .. generator_id .. "' automatic output " .. i .. " references non-existent chain '" .. output_evo_id .. "'")
+                elseif output_level > output_chain.max_grade then
+                    table.insert(errors, "Generator '" .. generator_id .. "' automatic output " .. i .. " level " .. output_level .. " exceeds max grade " .. output_chain.max_grade)
+                end
+            else
+                table.insert(errors, "Generator '" .. generator_id .. "' has invalid automatic output format: " .. output)
+            end
+        end
+    end
+    
+    if #errors > 0 then
+        print("GENERATOR CONFIG: Validation errors:")
+        for _, error in ipairs(errors) do
+            print("  - " .. error)
+        end
+        return false, table.concat(errors, "; ")
+    end
+    
+    return true
+end
+
+-- Функция для отладочного вывода конфигурации
+function M.debug_print_config()
+    print("=== Generator Configuration Debug ===")
+    for generator_id, generator in pairs(generators) do
+        print("Generator: " .. generator_id .. " (" .. generator.comment .. ")")
+        print("  Level: " .. generator.level .. " from chain: " .. generator.evo_id)
+        if generator.dispose_after then
+            print("  Dispose after: " .. generator.dispose_after .. " cycles")
+        end
+        if generator.dispose_to and generator.dispose_to ~= "" then
+            print("  Dispose to: " .. generator.dispose_to)
+        end
+        
+        local has_manual = generator.manual.capacity and #generator.manual.outputs > 0
+        local has_automatic = generator.automatic.capacity and #generator.automatic.outputs > 0
+        
+        if not has_manual and not has_automatic then
+            print("  WARNING: Generator has no generation types configured!")
+        end
+        
+        -- Ручная генерация
+        if has_manual then
+            print("  Manual Generation:")
+            print("    Capacity: " .. generator.manual.capacity)
+            if generator.manual.reload_sec then
+                print("    Reload: " .. generator.manual.reload_sec .. " seconds")
+            end
+            print("    Outputs:")
+            for i, output in ipairs(generator.manual.outputs) do
+                print("      " .. output .. " (rate: " .. generator.manual.rates[i] .. ")")
+            end
+        end
+        
+        -- Автоматическая генерация
+        if has_automatic then
+            print("  Automatic Generation:")
+            print("    Capacity: " .. generator.automatic.capacity)
+            if generator.automatic.timer_sec then
+                print("    Timer: " .. generator.automatic.timer_sec .. " seconds")
+            end
+            if generator.automatic.reload_sec then
+                print("    Reload: " .. generator.automatic.reload_sec .. " seconds")
+            end
+            print("    Outputs:")
+            for i, output in ipairs(generator.automatic.outputs) do
+                print("      " .. output .. " (rate: " .. generator.automatic.rates[i] .. ")")
+            end
+        end
+        print("")
+    end
+end
+
+return M 
