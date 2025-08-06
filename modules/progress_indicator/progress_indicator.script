@@ -1,0 +1,54 @@
+-- Круговой индикатор прогресса (0-100%)
+function init(self)
+    print("[PROGRESS INDICATOR] INIT", go.get_id())
+    self.progress = 0.0
+    self.color = vmath.vector4(0.2, 0.6, 1.0, 1)
+    go.set("right_half#sprite", "tint", vmath.vector4(1, 1, 1, 1))
+    go.set("left_half#sprite", "tint", vmath.vector4(1, 1, 1, 1))
+    go.set("fill_half#sprite", "tint", self.color)
+    go.set_scale(vmath.vector3(3, 3, 1), "right_half#sprite")
+    go.set_scale(vmath.vector3(3, 3, 1), "left_half#sprite")
+    go.set_scale(vmath.vector3(3, 3, 1), "fill_half#sprite")
+    go.set_rotation(vmath.quat_rotation_z(math.pi), "left_half")
+    go.set_rotation(vmath.quat_rotation_z(math.pi), "fill_half")
+    update_indicator(self)
+end
+
+function update(self, dt)
+    -- ничего не делаем, только реагируем на сообщения
+end
+
+function on_message(self, message_id, message, sender)
+    print("[PROGRESS INDICATOR] on_message", message_id, message and message.progress, go.get_id())
+    if message_id == hash("set_progress") then
+        self.progress = math.max(0.0, math.min(1.0, message.progress or 0))
+        update_indicator(self)
+    elseif message_id == hash("set_color") then
+        if message.color then
+            self.color = message.color
+            go.set("fill_half#sprite", "tint", self.color)
+        end
+    end
+end
+
+function update_indicator(self)
+    print("[PROGRESS INDICATOR] update_indicator", self.progress, go.get_id())
+    local angle = math.pi - (self.progress * math.pi * 2)
+    go.set_rotation(vmath.quat_rotation_z(angle), "fill_half")
+
+    -- Всегда обновляем цвет вращающегося сектора
+    go.set("fill_half#sprite", "tint", self.color)
+
+    local left_pos = go.get_position("left_half")
+    local fill_pos = go.get_position("fill_half")
+
+    if self.progress < 0.5 then
+        go.set_position(vmath.vector3(left_pos.x, left_pos.y, 0.5), "left_half")
+        go.set_position(vmath.vector3(fill_pos.x, fill_pos.y, 0.25), "fill_half")
+        go.set("right_half#sprite", "tint", vmath.vector4(1, 1, 1, 1))
+    else
+        go.set_position(vmath.vector3(left_pos.x, left_pos.y, 0.0), "left_half")
+        go.set_position(vmath.vector3(fill_pos.x, fill_pos.y, 0.5), "fill_half")
+        go.set("right_half#sprite", "tint", self.color)
+    end
+end
