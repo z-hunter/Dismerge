@@ -1,0 +1,42 @@
+local Indicator = require "scripts.progress_indicator_module"
+
+function init(self)
+    print("INDICATOR TEST: Using OOP progress_indicator_module")
+    self.indicators = {}
+    self.timers = {0, 0, 0}
+    self.indicator3_completed = false
+
+    -- Индикатор 1 (статичный)
+    self.indicators[1] = Indicator:new(vmath.vector3(300, 200, 0))
+    -- Индикатор 2 (медленный)
+    self.indicators[2] = Indicator:new(vmath.vector3(660, 200, 0))
+    -- Индикатор 3 (быстрый, самоуничтожение)
+    self.indicators[3] = Indicator:new(vmath.vector3(480, 440, 0))
+end
+
+function update(self, dt)
+    -- Индикатор 1: всегда стоит (не посылаем ему ничего)
+
+    -- Индикатор 2: медленно (4 сек на круг)
+    self.timers[2] = (self.timers[2] or 0) + dt
+    local progress2 = (self.timers[2] / 4) % 1
+    self.indicators[2]:set_progress(progress2)
+
+    -- Индикатор 3: быстро (2 сек на круг), уничтожается при 100%
+    if not self.indicator3_completed and self.indicators[3] then
+        self.timers[3] = (self.timers[3] or 0) + dt
+        local progress3 = (self.timers[3] / 2)
+        local display_progress = math.min(progress3, 1.0)
+        self.indicators[3]:set_progress(display_progress)
+        if math.floor(self.timers[3] * 2) ~= math.floor((self.timers[3] - dt) * 2) then
+            print("INDICATOR 3 - Timer:", string.format("%.1f", self.timers[3]), "Progress:", string.format("%.2f", progress3))
+        end
+        if progress3 >= 1.0 then
+            print("INDICATOR 3 COMPLETED! Destroying via OOP...")
+            self.indicators[3]:destroy()
+            self.indicator3_completed = true
+            self.indicators[3] = nil
+            print("INDICATOR 3 ALL PARTS DESTROYED!")
+        end
+    end
+end
