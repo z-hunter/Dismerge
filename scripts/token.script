@@ -68,6 +68,8 @@ function on_message(self, message_id, message, sender)
 		-- Визуальные эффекты для перетаскивания
 		go.set_scale(vmath.vector3(1.2, 1.2, 1.0), ".")
 		go.set("#label", "color", vmath.vector4(1, 1, 1, 0.8))
+		-- Скрываем иконку генератора при перетаскивании
+		go.set("#generator_icon", "visible", false)
 		
 	elseif message_id == hash("stop_drag") then
 		-- НОВАЯ СИСТЕМА: Окончание перетаскивания
@@ -127,6 +129,12 @@ function on_message(self, message_id, message, sender)
 		
 		msg.post(sender, "token_info", info)
 		
-
+	elseif message_id == hash("show_generator_icon") then
+		-- Показываем иконку генератора
+		go.set("#generator_icon", "visible", true)
+		
+	elseif message_id == hash("hide_generator_icon") then
+		-- Скрываем иконку генератора
+		go.set("#generator_icon", "visible", false)
 	end
 end 

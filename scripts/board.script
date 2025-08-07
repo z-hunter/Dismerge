@@ -322,6 +322,9 @@ function update(self, dt)
 	
 	-- Обновление визуала генераторов (индикаторы перезарядки)
 	update_generators_visual(self)
+	
+	-- Обновление иконок генераторов
+	update_generator_icons(self)
 end
 
 function on_message(self, message_id, message, sender)
@@ -502,6 +505,9 @@ function start_drag(self, token_id, grid_x, grid_y, level, evo_id)
 	
 	-- Отправляем сообщение фишке о начале перетаскивания
 	msg.post(token_id, "start_drag")
+	
+	-- Скрываем иконку генератора при перетаскивании
+	hide_generator_icon(self, grid_x, grid_y)
 	
 	-- Если перетаскиваемый токен является генератором, удаляем его индикатор
 	local generator_id = utils.create_token_string(evo_id, level)
@@ -704,6 +710,9 @@ function activate_generator(self, token_key, cell)
 	else
 		print("BOARD: Generator " .. generator_id .. " failed to generate: " .. (error_msg or "unknown error"))
 	end
+	
+	-- Обновляем иконки генераторов после активации
+	update_generator_icons(self)
 end
 
 -- Функция выброса фишки из генератора
@@ -830,6 +839,9 @@ function perform_merge(self, target_cell, target_token, target_key)
 			select_cell(self, target_cell.x, target_cell.y)
 		end
 		check_selection_after_drag(self)
+		
+		-- Обновляем иконки генераторов после мерджа
+		update_generator_icons(self)
 	else
 		print("BOARD: Merge failed - no evolution result for " .. target_token.evo_id .. " level " .. target_token.level)
 	end
@@ -884,6 +896,9 @@ function perform_move(self, target_cell)
 
     -- Проверяем выделение после перемещения
     check_selection_after_drag(self)
+    
+    -- Обновляем иконки генераторов после перемещения
+    update_generator_icons(self)
 end
 
 -- НОВАЯ СИСТЕМА: Функция выполнения возврата
@@ -936,12 +951,15 @@ function perform_return(self)
 	if self.pre_drag_selection and 
 	   self.pre_drag_selection.x == self.dragged_from.x and 
 	   self.pre_drag_selection.y == self.dragged_from.y then
-		-- Восстанавливаем выделение
+		print("BOARD: Restoring selection at (" .. self.dragged_from.x .. ", " .. self.dragged_from.y .. ")")
 		select_cell(self, self.dragged_from.x, self.dragged_from.y)
 	end
 	
 	-- Проверяем выделение после возврата
 	check_selection_after_drag(self)
+	
+	-- Обновляем иконки генераторов после возврата
+	update_generator_icons(self)
 end
 
 -- СИСТЕМА ВЫДЕЛЕНИЯ: Функция проверки выделения после перетаскивания
@@ -1046,14 +1064,17 @@ function initialize_generators(self)
 			local generator = generator_config.get_generator(generator_id)
 			if generator and generator.manual then
 				-- Инициализируем генератор с полной емкостью
-				generator.manual.current_capacity = generator.manual.capacity
-				generator.manual.is_reloading = false
+				token.current_capacity = generator.manual.capacity
+				token.is_reloading = false
 				print("BOARD: Initialized generator " .. generator_id .. " with capacity " .. generator.manual.capacity)
 			end
 		end
 	end
 	
 	print("BOARD: Generators initialization complete")
+	
+	-- Обновляем иконки генераторов после инициализации
+	update_generator_icons(self)
 end
 
 -- Функция завершения работы (очистка ресурсов)
@@ -1068,4 +1089,52 @@ function final(self)
 	print("BOARD: All generator indicators cleaned up")
 end
 
+-- Функция показа иконки генератора
+function show_generator_icon(self, grid_x, grid_y)
+	local token_key = utils.create_token_key(grid_x, grid_y)
+	if self.tokens[token_key] then
+		local token_id = self.tokens[token_key].id
+		msg.post(token_id, "show_generator_icon")
+		print("BOARD: Showing generator icon at grid(" .. grid_x .. ", " .. grid_y .. ")")
+	end
+end
+
+-- Функция скрытия иконки генератора
+function hide_generator_icon(self, grid_x, grid_y)
+	local token_key = utils.create_token_key(grid_x, grid_y)
+	if self.tokens[token_key] then
+		local token_id = self.tokens[token_key].id
+		msg.post(token_id, "hide_generator_icon")
+		print("BOARD: Hiding generator icon at grid(" .. grid_x .. ", " .. grid_y .. ")")
+	end
+end
+
+-- Функция обновления иконок генераторов
+function update_generator_icons(self)
+	for token_key, token in pairs(self.tokens) do
+		local generator_id = utils.create_token_string(token.evo_id, token.level)
+		
+		-- Проверяем, является ли фишка генератором с ручной активацией
+		if generator_config.is_generator(generator_id) then
+			local generator = generator_config.get_generator(generator_id)
+			if generator and generator.manual then
+				local grid_x, grid_y = utils.parse_token_key(token_key)
+				if grid_x and grid_y then
+					local is_reloading = is_generator_reloading(self, token_key)
+					local is_dragging = self.is_dragging and self.dragged_token == token.id
+					
+					-- Проверяем емкость генератора
+					local current_capacity = token.current_capacity or generator.manual.capacity
+					
+					-- Показываем иконку только если генератор готов и не перетаскивается
+					if not is_reloading and not is_dragging and current_capacity and current_capacity > 0 then
+						show_generator_icon(self, grid_x, grid_y)
+					else
+						hide_generator_icon(self, grid_x, grid_y)
+					end
+				end
+			end
+		end
+	end
+end
 

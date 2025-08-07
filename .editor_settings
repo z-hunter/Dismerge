@@ -2,10 +2,6 @@
   :workflow {
     :recent-files [
       [
-        "/main/ui_label.go"
-        :scene
-      ]
-      [
         "/scripts/token.script"
         :code
       ]
@@ -15,10 +11,6 @@
       ]
       [
         "/assets/iosevka.font"
-        :scene
-      ]
-      [
-        "/main/cell.go"
         :scene
       ]
       [
@@ -106,10 +98,6 @@
         :code
       ]
       [
-        "/assets/tile.atlas"
-        :scene
-      ]
-      [
         "/test/indicator_test.collection"
         :scene
       ]
@@ -128,6 +116,18 @@
       [
         "/game.project"
         :cljfx-form-view
+      ]
+      [
+        "/assets/tile.atlas"
+        :scene
+      ]
+      [
+        "/main/cell.go"
+        :scene
+      ]
+      [
+        "/main/token.go"
+        :scene
       ]
     ]
   }
