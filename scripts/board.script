@@ -4,6 +4,10 @@ local evolution_tables = require("scripts.evolution_tables")
 local field_config = require("scripts.field_config")
 -- Подключаем модуль конфигурации генераторов
 local generator_config = require("scripts.generator_config")
+-- Подключаем модуль индикаторов прогресса
+local Indicator = require("scripts.progress_indicator_module")
+-- Подключаем модуль логирования
+local debug_logger = require("scripts.debug_logger")
 -- Подключаем утилиты
 local utils = require("scripts.utils")
 
@@ -22,7 +26,7 @@ local function grid_to_screen(gx, gy)
 	return vmath.vector3(
 		(gx - 1) * CELL_SIZE - half_width + FIX_X,
 		(gy - 1) * CELL_SIZE - half_height + FIX_Y,
-		0
+		-0.5
 	)
 end
 
@@ -127,7 +131,10 @@ function init(self)
 	self.animating_tokens = {} -- список анимируемых фишек
 	
 	-- СИСТЕМА ПОТЕНЦИАЛЬНОГО ПЕРЕТАСКИВАНИЯ
-	self.potential_drag = nil -- информация о потенциальном перетаскивании
+	self.potential_drag = nil -- информация о потенциальном перетаскивания
+	
+	-- СИСТЕМА ИНДИКАТОРОВ ПРОГРЕССА ГЕНЕРАТОРОВ
+	self.generator_indicators = {} -- таблица индикаторов по ключу "x_y"
 
 	-- Загружаем эволюционные таблицы
 	print("BOARD: Loading evolution tables...")
@@ -186,7 +193,7 @@ function init(self)
 			local pos = vmath.vector3(
 			(x - 1) * CELL_SIZE - half_width + FIX_X,
 			(y - 1) * CELL_SIZE - half_height + FIX_Y,
-			0
+			-0.5
 		)
 			local id = factory.create("#cell_factory", pos, nil, { grid_x = x, grid_y = y }, 1)
 			self.cells[x][y] = { id = id }
@@ -214,27 +221,45 @@ function init(self)
 				elseif level > chain.max_grade then
 					print("BOARD: ERROR - Level " .. level .. " exceeds max grade " .. chain.max_grade .. " for chain '" .. evo_id .. "' at grid(" .. col_num .. ", " .. real_y .. ")")
 				else
-					local pos = grid_to_screen(col_num, real_y)
-					-- Фишки рисуются поверх ячеек (z = 1)
-					pos.z = 1
-					
-					local properties = { level = level, grid_x = col_num, grid_y = real_y }
-					local token_id = factory.create("#token_factory", pos, nil, properties, 1)
-					local token_key = utils.get_token_key(col_num, real_y)
-					self.tokens[token_key] = { id = token_id, level = level, evo_id = evo_id }
-					
-					-- Отправляем сообщение для установки evo_id после создания
-					msg.post(token_id, "set_evo_id", { evo_id = evo_id })
-					
-					print("BOARD: Created token " .. evo_id .. " level " .. level .. " at grid(" .. col_num .. ", " .. real_y .. ") id=" .. tostring(token_id))
+					local token_key = create_token_on_board(self, evo_id, level, col_num, real_y)
+					print("BOARD: Created token " .. evo_id .. " level " .. level .. " at grid(" .. col_num .. ", " .. real_y .. ") key=" .. tostring(token_key))
 				end
 			end
 		end
 	end
 	
 	print("BOARD: Initialization complete")
+	
+	-- Инициализируем генераторы после создания всех фишек
+	initialize_generators(self)
+	
+	-- Обновляем визуал генераторов после инициализации
+	-- ВРЕМЕННО ОТКЛЮЧЕНО: update_generators_visual(self)
 end
 
+function create_token_on_board(self, evo_id, level, grid_x, grid_y, initial_z)
+    local pos = grid_to_screen(grid_x, grid_y)
+    pos.z = initial_z or 0
+    local properties = { level = level, grid_x = grid_x, grid_y = grid_y }
+    local token_id = factory.create("#token_factory", pos, nil, properties, 1)
+    local token_key = utils.get_token_key(grid_x, grid_y)
+    local generator = generator_config.get_generator(utils.create_token_string(evo_id, level))
+    if generator and generator.manual then
+        self.tokens[token_key] = {
+            id = token_id,
+            level = level,
+            evo_id = evo_id,
+            current_capacity = generator.manual.capacity,
+            is_reloading = false,
+            reload_start_time = 0,
+            reload_end_time = 0
+        }
+    else
+        self.tokens[token_key] = { id = token_id, level = level, evo_id = evo_id }
+    end
+    msg.post(token_id, "set_evo_id", { evo_id = evo_id })
+    return token_key
+end
 
 
 function update(self, dt)
@@ -242,7 +267,7 @@ function update(self, dt)
 	if self.is_dragging and self.dragged_token then
 		-- Получаем позицию мыши из последнего события
 		if self.last_mouse_pos then
-			local target_pos = vmath.vector3(self.last_mouse_pos.x, self.last_mouse_pos.y, 1)
+			local target_pos = vmath.vector3(self.last_mouse_pos.x, self.last_mouse_pos.y, 0)
 			msg.post(self.dragged_token, "set_position", { position = target_pos })
 		end
 	end
@@ -268,16 +293,21 @@ function update(self, dt)
 			
 			if progress >= 1.0 then
 				-- Анимация завершена - перемещаем фишку на финальную позицию
-				msg.post(anim.token_id, "set_position", { position = anim.end_pos })
+				local end_pos = vmath.vector3(anim.end_pos.x, anim.end_pos.y, 0)
+				msg.post(anim.token_id, "set_position", { position = end_pos })
 				table.remove(self.animating_tokens, i)
 			else
 				-- Обновляем позицию
 				local current_pos = anim.start_pos + (anim.end_pos - anim.start_pos) * progress
+				current_pos.z = 0
 				msg.post(anim.token_id, "set_position", { position = current_pos })
 				i = i + 1
 			end
 		end
 	end
+	
+	-- Обновление визуала генераторов (индикаторы перезарядки)
+	update_generators_visual(self)
 end
 
 function on_message(self, message_id, message, sender)
@@ -293,7 +323,7 @@ function on_message(self, message_id, message, sender)
 				local generator_id = utils.create_token_string(token.evo_id, token.level)
 				if generator_config.is_generator(generator_id) then
 					print("BOARD: Generator activated on second click: " .. generator_id .. " at grid(" .. message.grid_x .. ", " .. message.grid_y .. ")")
-					activate_generator(self, generator_id, { x = message.grid_x, y = message.grid_y })
+					activate_generator(self, token_key, { x = message.grid_x, y = message.grid_y })
 				else
 					-- Не генератор - просто снимаем выделение
 					clear_cell_selection(self)
@@ -314,6 +344,7 @@ function on_message(self, message_id, message, sender)
 		print("  Is dragging: " .. tostring(self.is_dragging))
 		print("  Dragged token: " .. tostring(self.dragged_token))
 		print("  Tokens count: " .. (function() local count = 0 for _ in pairs(self.tokens) do count = count + 1 end return count end)())
+
 	end
 end
 
@@ -449,12 +480,21 @@ function start_drag(self, token_id, grid_x, grid_y, level, evo_id)
 		clear_cell_selection(self)
 	end
 	
-	-- Удаляем фишку из исходной позиции в данных
+	-- НЕ удаляем фишку из данных при начале перетаскивания
+	-- Она будет перемещена в perform_move или perform_return
 	local token_key = utils.get_token_key(grid_x, grid_y)
-	self.tokens[token_key] = nil
+	print("DEBUG: START_DRAG - token_key=" .. tostring(token_key) .. " for (" .. grid_x .. "," .. grid_y .. ")")
+	print("DEBUG: START_DRAG - self.tokens[token_key] exists: " .. tostring(self.tokens[token_key] ~= nil))
 	
 	-- Отправляем сообщение фишке о начале перетаскивания
 	msg.post(token_id, "start_drag")
+	
+	-- Если перетаскиваемый токен является генератором, удаляем его индикатор
+	local generator_id = utils.create_token_string(evo_id, level)
+	if generator_config.is_generator(generator_id) then
+		remove_generator_indicator(self, token_key)
+		print("BOARD: Removed indicator for dragged generator " .. generator_id)
+	end
 	
 	print("BOARD: Drag started - token " .. evo_id .. " level " .. level .. " from (" .. grid_x .. ", " .. grid_y .. ")")
 end
@@ -470,8 +510,9 @@ function handle_token_release(self, mouse_x, mouse_y)
 		local target_key = utils.get_token_key(target_cell.x, target_cell.y)
 		local target_token = self.tokens[target_key]
 		
-		-- Проверяем возможность мерджа (одинаковые уровень и цепочка)
-		if target_token and target_token.level == self.dragged_level and target_token.evo_id == self.dragged_evo_id then
+		-- Проверяем возможность мерджа (одинаковые уровень и цепочка, но не с самим собой)
+		if target_token and target_token.level == self.dragged_level and target_token.evo_id == self.dragged_evo_id and 
+		   not (target_cell.x == self.dragged_from.x and target_cell.y == self.dragged_from.y) then
 			-- МЕРДЖ: Объединяем фишки
 			print("BOARD: MERGE - " .. target_token.evo_id .. " level " .. target_token.level .. " + " .. self.dragged_evo_id .. " level " .. self.dragged_level)
 			perform_merge(self, target_cell, target_token, target_key)
@@ -494,15 +535,158 @@ function handle_token_release(self, mouse_x, mouse_y)
 	clear_drag_state(self)
 end
 
--- Функция активации генератора
-function activate_generator(self, generator_id, cell)
-	-- Получаем случайную фишку из генератора
-	local output_token, error_msg = generator_config.get_random_manual_output(generator_id)
+-- Функция обновления визуала всех генераторов на поле
+function update_generators_visual(self)
+	for token_key, token in pairs(self.tokens) do
+		local generator_id = utils.create_token_string(token.evo_id, token.level)
+		
+		-- Проверяем, является ли фишка генератором
+		if generator_config.is_generator(generator_id) then
+			local is_reloading = is_generator_reloading(self, token_key)
+			
+			-- Обновляем визуал только если генератор перезаряжается или имеет индикатор
+			if is_reloading or self.generator_indicators[token_key] then
+				update_generator_visual(self, generator_id, token_key, token)
+			end
+		end
+	end
+end
+
+-- Функция обновления визуала генератора
+function update_generator_visual(self, generator_id, token_key, token)
+	local is_reloading = is_generator_reloading(self, token_key)
+	local reload_progress = get_generator_reload_progress(self, token_key)
 	
+	-- Если генератор перетаскивается, удаляем индикатор
+	if self.is_dragging and self.dragged_token == token.id then
+		remove_generator_indicator(self, token_key)
+		return
+	end
+	
+	if is_reloading then
+		-- Генератор на перезарядке - показываем или обновляем индикатор
+		if self.generator_indicators[token_key] then
+			-- Индикатор уже существует - обновляем прогресс
+			self.generator_indicators[token_key]:set_progress(reload_progress)
+		else
+			-- Создаём новый индикатор
+			show_generator_indicator(self, generator_id, token_key, token, reload_progress)
+		end
+	else
+		-- Генератор готов - удаляем индикатор
+		remove_generator_indicator(self, token_key)
+	end
+end
+
+-- Функция показа индикатора перезарядки генератора
+function show_generator_indicator(self, generator_id, token_key, token, progress)
+	-- Если индикатор уже существует, обновляем его прогресс
+	if self.generator_indicators[token_key] then
+		self.generator_indicators[token_key]:set_progress(progress)
+		return
+	end
+	
+	-- Извлекаем координаты из ключа токена
+	local grid_x, grid_y = utils.parse_token_key(token_key)
+	if not grid_x or not grid_y then
+		print("BOARD: ERROR - Cannot parse token key: " .. token_key)
+		return
+	end
+	
+	-- Создаем новый индикатор
+	local token_pos = grid_to_screen(grid_x, grid_y)
+	token_pos.z = 0
+	-- Размещаем индикатор в правом верхнем углу тайла, уменьшенный в 4 раза
+	local indicator_pos = vmath.vector3(
+		token_pos.x + CELL_SIZE * 0.25,  -- Смещение вправо
+		token_pos.y + CELL_SIZE * 0.25,  -- Смещение вверх
+		0.6 -- фиксированное значение, чтобы все части индикатора были видимы
+	)
+	local indicator_scale = vmath.vector3(0.25, 0.25, 1) -- Уменьшен в 4 раза
+	
+	print("DEBUG: token_pos for indicator = " .. tostring(token_pos))
+	print("DEBUG: indicator_pos for indicator = " .. tostring(indicator_pos))
+	print("DEBUG: SHOW_INDICATOR: token_pos = (" .. tostring(token_pos.x) .. ", " .. tostring(token_pos.y) .. ", " .. tostring(token_pos.z) .. ") indicator_pos = (" .. tostring(indicator_pos.x) .. ", " .. tostring(indicator_pos.y) .. ", " .. tostring(indicator_pos.z) .. ") for key " .. tostring(token_key))
+	
+	local indicator = Indicator:new(indicator_pos, indicator_scale)
+	indicator:set_color(vmath.vector4(0.2, 0.6, 1.0, 1)) -- Синий цвет
+	indicator:set_progress(progress)
+	
+	self.generator_indicators[token_key] = indicator
+	debug_logger.log_important("Created reload indicator for generator " .. generator_id .. " at " .. token_key, 5.0)
+end
+
+-- Функция удаления индикатора перезарядки генератора
+function remove_generator_indicator(self, token_key)
+	if self.generator_indicators[token_key] then
+		self.generator_indicators[token_key]:destroy()
+		self.generator_indicators[token_key] = nil
+		debug_logger.log_important("Removed reload indicator for generator at " .. token_key, 5.0)
+		if self.tokens and self.tokens[token_key] and self.tokens[token_key].id then
+			local pos = go.get_position(self.tokens[token_key].id)
+			print("DEBUG: REMOVE_INDICATOR: token_pos = (" .. tostring(pos.x) .. ", " .. tostring(pos.y) .. ", " .. tostring(pos.z) .. ") for key " .. tostring(token_key))
+		end
+	end
+end
+
+-- Функция активации генератора по token_key
+function activate_generator_token(self, token_key)
+    local token = self.tokens[token_key]
+    if not token then return false, "No token" end
+    local generator = generator_config.get_generator(utils.create_token_string(token.evo_id, token.level))
+    if not generator or not generator.manual then return false, "No generator config" end
+    if token.is_reloading then return false, "Still reloading" end
+    if not token.current_capacity or token.current_capacity <= 0 then return false, "No capacity left" end
+    
+    token.current_capacity = token.current_capacity - 1
+    
+    if token.current_capacity <= 0 then
+        token.is_reloading = true
+        token.reload_start_time = os.clock()
+        token.reload_end_time = token.reload_start_time + generator.manual.reload_sec
+    end
+    return true
+end
+
+function is_generator_reloading(self, token_key)
+    local token = self.tokens[token_key]
+    if not token then return false end
+    if token.is_reloading then
+        if os.clock() >= token.reload_end_time then
+            token.is_reloading = false
+            local generator = generator_config.get_generator(utils.create_token_string(token.evo_id, token.level))
+            if generator and generator.manual then
+                token.current_capacity = generator.manual.capacity
+            end
+        end
+    end
+    return token.is_reloading
+end
+
+function get_generator_reload_progress(self, token_key)
+    local token = self.tokens[token_key]
+    if not token or not token.is_reloading then return 1.0 end
+    local generator = generator_config.get_generator(utils.create_token_string(token.evo_id, token.level))
+    if not generator or not generator.manual then return 1.0 end
+    local total = generator.manual.reload_sec
+    local elapsed = os.clock() - token.reload_start_time
+    return math.min(elapsed / total, 1.0)
+end
+
+-- Функция активации генератора
+function activate_generator(self, token_key, cell)
+    local ok, err = activate_generator_token(self, token_key)
+    if not ok then
+        print("BOARD: Generator cannot be activated: " .. (err or "unknown error"))
+        return
+    end
+    local token = self.tokens[token_key]
+    local generator_id = utils.create_token_string(token.evo_id, token.level)
+    local output_token, error_msg = generator_config.get_random_manual_output(generator_id)
 	if output_token then
 		print("BOARD: Generator " .. generator_id .. " generated: " .. output_token)
-		-- Создаем фишку на поле
-		drop_token_from_generator(self, output_token, cell)
+			drop_token_from_generator(self, output_token, cell)
+        update_generator_visual(self, generator_id, token_key, token)
 	else
 		print("BOARD: Generator " .. generator_id .. " failed to generate: " .. (error_msg or "unknown error"))
 	end
@@ -524,18 +708,15 @@ function drop_token_from_generator(self, token_string, generator_cell)
 		return
 	end
 	
-	-- Создаем фишку у генератора (начальная позиция для анимации)
-	local start_pos = grid_to_screen(generator_cell.x, generator_cell.y)
-	start_pos.z = 1
-	local properties = { level = level, grid_x = target_cell.x, grid_y = target_cell.y }
-	local token_id = factory.create("#token_factory", start_pos, nil, properties, 1)
+	-- Создаем фишку с помощью универсальной функции
+	local token_key = create_token_on_board(self, evo_id, level, target_cell.x, target_cell.y, -2) -- Скрыта во время полёта
+	local token_id = self.tokens[token_key].id
 	
-	-- Сохраняем фишку в данных (уже на целевой позиции)
-	local token_key = utils.get_token_key(target_cell.x, target_cell.y)
-	self.tokens[token_key] = { id = token_id, level = level, evo_id = evo_id }
-	
-	-- Отправляем evo_id через сообщение
-	msg.post(token_id, "set_evo_id", { evo_id = evo_id })
+	-- Если выброшенная фишка является генератором, инициализируем его
+	local dropped_generator_id = utils.create_token_string(evo_id, level)
+	if generator_config.is_generator(dropped_generator_id) then
+		print("BOARD: Initialized dropped generator " .. dropped_generator_id .. " with capacity " .. tostring(self.tokens[token_key].current_capacity))
+	end
 	
 	-- Создаем анимацию полета от генератора к целевой клетке
 	create_drop_animation(self, token_id, generator_cell, target_cell)
@@ -547,11 +728,11 @@ end
 function create_drop_animation(self, token_id, from_cell, to_cell)
 	-- Начальная позиция (у генератора)
 	local start_pos = grid_to_screen(from_cell.x, from_cell.y)
-	start_pos.z = 1
+	start_pos.z = 0
 	
 	-- Конечная позиция (целевая клетка)
 	local end_pos = grid_to_screen(to_cell.x, to_cell.y)
-	end_pos.z = 1
+	end_pos.z = 0
 	
 	-- Анимация полета
 	local duration = 0.17 -- секунды (ускорено в 3 раза)
@@ -572,49 +753,59 @@ end
 
 -- НОВАЯ СИСТЕМА: Функция выполнения мерджа
 function perform_merge(self, target_cell, target_token, target_key)
-	-- Удаляем старые фишки
+	-- Удаляем индикаторы генераторов если они есть
+	local dragged_generator_id = utils.create_token_string(self.dragged_evo_id, self.dragged_level)
+	local target_generator_id = utils.create_token_string(target_token.evo_id, target_token.level)
+	
+	if generator_config.is_generator(dragged_generator_id) then
+		local dragged_key = utils.get_token_key(self.dragged_from.x, self.dragged_from.y)
+		remove_generator_indicator(self, dragged_key)
+		print("BOARD: Removed indicator for dragged generator " .. dragged_generator_id)
+	end
+	
+	if generator_config.is_generator(target_generator_id) then
+		remove_generator_indicator(self, target_key)
+		print("BOARD: Removed indicator for target generator " .. target_generator_id)
+	end
+	
+	-- Удаляем старые фишки (с проверкой существования)
+	if target_token and target_token.id then
 	go.delete(target_token.id)
+	end
+	if self.dragged_token then
 	go.delete(self.dragged_token)
+	end
 	
 	-- Получаем результат слияния из эволюционных таблиц
 	local merge_result = evolution_tables.get_merge_result(target_token.evo_id, target_token.level)
 	
 	if merge_result then
-		-- Создаем новую фишку с результатом слияния
-		local pos = grid_to_screen(target_cell.x, target_cell.y)
-		pos.z = 1
-		local new_token_id = factory.create("#token_factory", pos, nil, { 
-			level = merge_result.level, 
-			grid_x = target_cell.x, 
-			grid_y = target_cell.y
-		}, 1)
-		
-		-- Отправляем evo_id через сообщение (так как строки нельзя передавать как свойства)
-		msg.post(new_token_id, "set_evo_id", { evo_id = merge_result.evo_id })
-		
-		-- Обновляем данные
-		self.tokens[target_key] = { 
-			id = new_token_id, 
-			level = merge_result.level, 
-			evo_id = merge_result.evo_id 
-		}
-		
+		local token_key = create_token_on_board(self, merge_result.evo_id, merge_result.level, target_cell.x, target_cell.y)
+		local new_token = self.tokens[token_key]
+		print("BOARD: Created merged token " .. merge_result.evo_id .. " level " .. merge_result.level .. " at grid(" .. target_cell.x .. ", " .. target_cell.y .. ") key=" .. tostring(token_key))
+		print("DEBUG: MERGE - new_token.id=" .. tostring(new_token and new_token.id) .. ", new_token exists=" .. tostring(new_token ~= nil))
+		-- Очищаем данные об исходной позиции перетаскиваемой фишки
+		local dragged_key = utils.get_token_key(self.dragged_from.x, self.dragged_from.y)
+		if self.tokens[dragged_key] then
+			self.tokens[dragged_key] = nil
+			print("BOARD: Cleared dragged token data from (" .. self.dragged_from.x .. ", " .. self.dragged_from.y .. ")")
+		end
 		-- Обновляем визуал новой фишки
-		msg.post(new_token_id, "update_level", { level = merge_result.level })
-		msg.post(new_token_id, "update_evo_id", { evo_id = merge_result.evo_id })
-		
+		local new_generator_id = utils.create_token_string(merge_result.evo_id, merge_result.level)
+		if generator_config.is_generator(new_generator_id) then
+			local new_token = self.tokens[token_key]
+			update_generator_visual(self, new_generator_id, token_key, new_token)
+			print("BOARD: Updated indicator for merged generator " .. new_generator_id)
+		end
 		local item_name = evolution_tables.get_item_name(merge_result.evo_id, merge_result.level)
 		print("BOARD: Merge completed - new token " .. merge_result.evo_id .. " level " .. merge_result.level .. " (" .. item_name .. ") at (" .. target_cell.x .. ", " .. target_cell.y .. ")")
-		
 		-- Если была выделена одна из исходных позиций, выделяем новую фишку
 		if self.pre_drag_selection and 
-		   (self.pre_drag_selection.x == self.dragged_from.x and self.pre_drag_selection.y == self.dragged_from.y) or
-		   (self.pre_drag_selection.x == target_cell.x and self.pre_drag_selection.y == target_cell.y) then
+		   ((self.pre_drag_selection.x == self.dragged_from.x and self.pre_drag_selection.y == self.dragged_from.y) or
+		    (self.pre_drag_selection.x == target_cell.x and self.pre_drag_selection.y == target_cell.y)) then
 			print("BOARD: Selecting merged token at (" .. target_cell.x .. ", " .. target_cell.y .. ")")
 			select_cell(self, target_cell.x, target_cell.y)
 		end
-		
-		-- Проверяем выделение после мерджа
 		check_selection_after_drag(self)
 	else
 		print("BOARD: Merge failed - no evolution result for " .. target_token.evo_id .. " level " .. target_token.level)
@@ -623,42 +814,98 @@ end
 
 -- НОВАЯ СИСТЕМА: Функция выполнения перемещения
 function perform_move(self, target_cell)
-	-- Перемещаем фишку на новую позицию
-	local pos = grid_to_screen(target_cell.x, target_cell.y)
-	pos.z = 1
-	msg.post(self.dragged_token, "move_to", { position = pos, smooth = true })
-	
-	-- Обновляем данные
-	local target_key = utils.get_token_key(target_cell.x, target_cell.y)
-	self.tokens[target_key] = { id = self.dragged_token, level = self.dragged_level, evo_id = self.dragged_evo_id }
-	
-	-- Обновляем координаты фишки
-	msg.post(self.dragged_token, "set_grid_position", { grid_x = target_cell.x, grid_y = target_cell.y })
-	
-	print("BOARD: Move completed - token " .. self.dragged_evo_id .. " level " .. self.dragged_level .. " moved to (" .. target_cell.x .. ", " .. target_cell.y .. ")")
-	
-	-- Если была выделена исходная позиция, выделяем новую позицию
-	if self.pre_drag_selection and 
-	   self.pre_drag_selection.x == self.dragged_from.x and 
-	   self.pre_drag_selection.y == self.dragged_from.y then
-		print("BOARD: Moving selection from (" .. self.dragged_from.x .. ", " .. self.dragged_from.y .. ") to (" .. target_cell.x .. ", " .. target_cell.y .. ")")
-		select_cell(self, target_cell.x, target_cell.y)
-	end
-	
-	-- Проверяем выделение после перемещения
-	check_selection_after_drag(self)
+    local pos = grid_to_screen(target_cell.x, target_cell.y)
+    pos.z = 1
+    msg.post(self.dragged_token, "move_to", { position = pos, smooth = true })
+
+    local target_key = utils.get_token_key(target_cell.x, target_cell.y)
+    local old_key = utils.get_token_key(self.dragged_from.x, self.dragged_from.y)
+    
+    print("DEBUG: MOVE - old_key=" .. tostring(old_key) .. ", target_key=" .. tostring(target_key))
+    print("DEBUG: MOVE - dragged_from=(" .. self.dragged_from.x .. "," .. self.dragged_from.y .. ")")
+    print("DEBUG: MOVE - self.tokens[old_key] exists: " .. tostring(self.tokens[old_key] ~= nil))
+    
+    -- Токен должен существовать, так как мы его не удаляли при начале перетаскивания
+    if not self.tokens[old_key] then
+        print("ERROR: MOVE - self.tokens[old_key] is nil! This shouldn't happen.")
+        return
+    end
+    
+    self.tokens[target_key] = self.tokens[old_key]
+    self.tokens[target_key].id = self.dragged_token
+    self.tokens[target_key].level = self.dragged_level
+    self.tokens[target_key].evo_id = self.dragged_evo_id
+    if old_key ~= target_key then
+        self.tokens[old_key] = nil
+    end
+
+    msg.post(self.dragged_token, "set_grid_position", { grid_x = target_cell.x, grid_y = target_cell.y })
+
+    -- Если перемещаемый токен является генератором, восстанавливаем его индикатор на новой позиции
+    local generator_id = utils.create_token_string(self.dragged_evo_id, self.dragged_level)
+    if generator_config.is_generator(generator_id) then
+        local token = self.tokens[target_key]
+        update_generator_visual(self, generator_id, target_key, token)
+        print("BOARD: Restored indicator for moved generator " .. generator_id .. " at new position")
+    end
+
+    print("BOARD: Move completed - token " .. self.dragged_evo_id .. " level " .. self.dragged_level .. " moved to (" .. target_cell.x .. ", " .. target_cell.y .. ")")
+
+    -- Если была выделена исходная позиция, выделяем новую позицию
+    if self.pre_drag_selection and 
+       self.pre_drag_selection.x == self.dragged_from.x and 
+       self.pre_drag_selection.y == self.dragged_from.y then
+        print("BOARD: Moving selection from (" .. self.dragged_from.x .. ", " .. self.dragged_from.y .. ") to (" .. target_cell.x .. ", " .. target_cell.y .. ")")
+        select_cell(self, target_cell.x, target_cell.y)
+    end
+
+    -- Проверяем выделение после перемещения
+    check_selection_after_drag(self)
 end
 
 -- НОВАЯ СИСТЕМА: Функция выполнения возврата
 function perform_return(self)
 	-- Возвращаем фишку на исходную позицию
 	local pos = grid_to_screen(self.dragged_from.x, self.dragged_from.y)
-	pos.z = 1
+	pos.z = 0
 	msg.post(self.dragged_token, "move_to", { position = pos, smooth = true })
 	
 	-- Восстанавливаем данные
 	local original_key = utils.get_token_key(self.dragged_from.x, self.dragged_from.y)
-	self.tokens[original_key] = { id = self.dragged_token, level = self.dragged_level, evo_id = self.dragged_evo_id }
+	local current_key = nil
+	-- Найти текущий ключ по dragged_token
+	for k, v in pairs(self.tokens) do
+		if v.id == self.dragged_token then
+			current_key = k
+			break
+		end
+	end
+	
+	print("DEBUG: RETURN - original_key=" .. tostring(original_key) .. ", current_key=" .. tostring(current_key))
+	print("DEBUG: RETURN - dragged_from=(" .. self.dragged_from.x .. "," .. self.dragged_from.y .. ")")
+	print("DEBUG: RETURN - self.tokens[current_key] exists: " .. tostring(current_key and self.tokens[current_key] ~= nil))
+	
+	-- Токен должен существовать, так как мы его не удаляли при начале перетаскивания
+	if not current_key or not self.tokens[current_key] then
+		print("ERROR: RETURN - self.tokens[current_key] is nil! This shouldn't happen.")
+		return
+	end
+	
+	self.tokens[original_key] = self.tokens[current_key]
+	self.tokens[original_key].id = self.dragged_token
+	self.tokens[original_key].level = self.dragged_level
+	self.tokens[original_key].evo_id = self.dragged_evo_id
+	if current_key ~= original_key then
+		self.tokens[current_key] = nil
+	end
+	
+	-- Если возвращаемый токен является генератором, восстанавливаем его индикатор
+	local generator_id = utils.create_token_string(self.dragged_evo_id, self.dragged_level)
+	if generator_config.is_generator(generator_id) then
+		local token = self.tokens[original_key]
+		update_generator_visual(self, generator_id, original_key, token)
+		print("BOARD: Restored indicator for returned generator " .. generator_id)
+	end
 	
 	print("BOARD: Return completed - token " .. self.dragged_evo_id .. " level " .. self.dragged_level .. " returned to (" .. self.dragged_from.x .. ", " .. self.dragged_from.y .. ")")
 	
@@ -714,8 +961,10 @@ end
 
 -- НОВАЯ СИСТЕМА: Функция очистки состояния перетаскивания
 function clear_drag_state(self)
-	-- Останавливаем перетаскивание
+	-- Останавливаем перетаскивание (с проверкой существования объекта)
+	if self.dragged_token then
 	msg.post(self.dragged_token, "stop_drag")
+	end
 	
 	-- Очищаем данные
 	self.dragged_token = nil
@@ -762,3 +1011,38 @@ function hide_token_info(self)
 	-- Отправляем сообщение в UI для скрытия информации
 	msg.post("main:/ui", "hide_token_info")
 end
+
+-- Функция инициализации генераторов
+function initialize_generators(self)
+	print("BOARD: Initializing generators...")
+	
+	for token_key, token in pairs(self.tokens) do
+		local generator_id = utils.create_token_string(token.evo_id, token.level)
+		
+		if generator_config.is_generator(generator_id) then
+			local generator = generator_config.get_generator(generator_id)
+			if generator and generator.manual then
+				-- Инициализируем генератор с полной емкостью
+				generator.manual.current_capacity = generator.manual.capacity
+				generator.manual.is_reloading = false
+				print("BOARD: Initialized generator " .. generator_id .. " with capacity " .. generator.manual.capacity)
+			end
+		end
+	end
+	
+	print("BOARD: Generators initialization complete")
+end
+
+-- Функция завершения работы (очистка ресурсов)
+function final(self)
+	-- Очищаем все индикаторы генераторов
+	for token_key, indicator in pairs(self.generator_indicators) do
+		if indicator then
+			indicator:destroy()
+		end
+	end
+	self.generator_indicators = {}
+	print("BOARD: All generator indicators cleaned up")
+end
+
+

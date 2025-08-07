@@ -1,17 +1,36 @@
 -- Круговой индикатор прогресса (0-100%)
+local debug_logger = require("scripts.debug_logger")
+
 function init(self)
-    print("[PROGRESS INDICATOR] INIT", go.get_id())
+    debug_logger.log_init("[PROGRESS INDICATOR] INIT " .. tostring(go.get_id()))
     self.progress = 0.0
     self.color = vmath.vector4(0.2, 0.6, 1.0, 1)
+    
+    print("INDICATOR INIT: Setting up sprites...")
     go.set("right_half#sprite", "tint", vmath.vector4(1, 1, 1, 1))
     go.set("left_half#sprite", "tint", vmath.vector4(1, 1, 1, 1))
     go.set("fill_half#sprite", "tint", self.color)
+    
+    print("INDICATOR INIT: Setting scale...")
     go.set_scale(vmath.vector3(3, 3, 1), "right_half#sprite")
     go.set_scale(vmath.vector3(3, 3, 1), "left_half#sprite")
     go.set_scale(vmath.vector3(3, 3, 1), "fill_half#sprite")
+    
+    print("INDICATOR INIT: Setting rotation...")
     go.set_rotation(vmath.quat_rotation_z(math.pi), "left_half")
     go.set_rotation(vmath.quat_rotation_z(math.pi), "fill_half")
+    
+    print("INDICATOR INIT: Calling update_indicator...")
     update_indicator(self)
+    
+    -- Проверяем позиции всех объектов индикатора
+    local root_pos = go.get_position()
+    local right_pos = go.get_position("right_half")
+    local left_pos = go.get_position("left_half")
+    local fill_pos = go.get_position("fill_half")
+    
+    print("INDICATOR POSITIONS: root=" .. tostring(root_pos) .. ", right=" .. tostring(right_pos) .. ", left=" .. tostring(left_pos) .. ", fill=" .. tostring(fill_pos))
+    print("INDICATOR INIT: Done!")
 end
 
 function update(self, dt)
@@ -19,7 +38,7 @@ function update(self, dt)
 end
 
 function on_message(self, message_id, message, sender)
-    print("[PROGRESS INDICATOR] on_message", message_id, message and message.progress, go.get_id())
+    debug_logger.log_indicator_message(message_id, message and message.progress, go.get_id())
     if message_id == hash("set_progress") then
         self.progress = math.max(0.0, math.min(1.0, message.progress or 0))
         update_indicator(self)
@@ -32,23 +51,35 @@ function on_message(self, message_id, message, sender)
 end
 
 function update_indicator(self)
-    print("[PROGRESS INDICATOR] update_indicator", self.progress, go.get_id())
+    debug_logger.log_progress_indicator(self.progress, go.get_id())
+
     local angle = math.pi - (self.progress * math.pi * 2)
     go.set_rotation(vmath.quat_rotation_z(angle), "fill_half")
 
     -- Всегда обновляем цвет вращающегося сектора
     go.set("fill_half#sprite", "tint", self.color)
 
-    local left_pos = go.get_position("left_half")
-    local fill_pos = go.get_position("fill_half")
+    -- Получаем базовую позицию индикатора (корневого объекта)
+    local base_pos = go.get_position()
+
+    -- Динамически управляем Z-координатами для правильного порядка отрисовки
+    local base_z = base_pos.z -- Используем Z корневого объекта как базу
+
+    local z_right = base_z + 0.05 -- Самый нижний, но выше root
+    local z_fill = base_z + 0.1  -- Средний
+    local z_left = base_z + 0.2  -- Самый верхний
 
     if self.progress < 0.5 then
-        go.set_position(vmath.vector3(left_pos.x, left_pos.y, 0.5), "left_half")
-        go.set_position(vmath.vector3(fill_pos.x, fill_pos.y, 0.25), "fill_half")
+        -- Фаза 1: левый полукруг впереди, правый белый
+        go.set_position(vmath.vector3(base_pos.x, base_pos.y, z_left), "left_half")
+        go.set_position(vmath.vector3(base_pos.x, base_pos.y, z_fill), "fill_half")
+        go.set_position(vmath.vector3(base_pos.x, base_pos.y, z_right), "right_half")
         go.set("right_half#sprite", "tint", vmath.vector4(1, 1, 1, 1))
     else
-        go.set_position(vmath.vector3(left_pos.x, left_pos.y, 0.0), "left_half")
-        go.set_position(vmath.vector3(fill_pos.x, fill_pos.y, 0.5), "fill_half")
+        -- Фаза 2: левый полукруг позади, правый окрашен
+        go.set_position(vmath.vector3(base_pos.x, base_pos.y, z_right), "left_half") -- Позади
+        go.set_position(vmath.vector3(base_pos.x, base_pos.y, z_left), "fill_half")  -- Впереди
+        go.set_position(vmath.vector3(base_pos.x, base_pos.y, z_fill), "right_half") -- Средний
         go.set("right_half#sprite", "tint", self.color)
     end
 end

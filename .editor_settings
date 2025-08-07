@@ -2,66 +2,6 @@
   :workflow {
     :recent-files [
       [
-        "/README.md"
-        :html
-      ]
-      [
-        "/main/item_factory.factory"
-        :cljfx-form-view
-      ]
-      [
-        "/scripts/item_script.script"
-        :code
-      ]
-      [
-        "/game.project"
-        :text
-      ]
-      [
-        "/game.project"
-        :cljfx-form-view
-      ]
-      [
-        "/assets/tile.atlas"
-        :scene
-      ]
-      [
-        "/main/item.go"
-        :scene
-      ]
-      [
-        "/main/cell_factory.factory"
-        :cljfx-form-view
-      ]
-      [
-        "/main/board_factorys.go"
-        :scene
-      ]
-      [
-        "/main/token_factory.factory"
-        :cljfx-form-view
-      ]
-      [
-        "/main/ui_factory.factory"
-        :cljfx-form-view
-      ]
-      [
-        "/main/token.go"
-        :scene
-      ]
-      [
-        "/main/ui_label_factory.factory"
-        :cljfx-form-view
-      ]
-      [
-        "/main/ui_lable.go"
-        :scene
-      ]
-      [
-        "/main/main.collection"
-        :scene
-      ]
-      [
         "/main/ui_label.go"
         :scene
       ]
@@ -98,12 +38,96 @@
         :code
       ]
       [
+        "/scripts/board.script"
+        :code
+      ]
+      [
+        "/test/test_indicator.collection"
+        :scene
+      ]
+      [
+        "/test/simple_indicator.collection"
+        :scene
+      ]
+      [
+        "/test/modular_indicator_test.script"
+        :code
+      ]
+      [
+        "/test/simple_test.script"
+        :code
+      ]
+      [
         "/main/board.go"
         :scene
       ]
       [
-        "/scripts/board.script"
+        "/test/direct_test.collection"
+        :scene
+      ]
+      [
+        "/test/indicator_factory.factory"
+        :cljfx-form-view
+      ]
+      [
+        "/test/module_test.collection"
+        :scene
+      ]
+      [
+        "/test/testindicator_factory.factory.factory"
+        :cljfx-form-view
+      ]
+      [
+        "/test/direct_test.script"
         :code
+      ]
+      [
+        "/test/simple_module_test.collection"
+        :scene
+      ]
+      [
+        "/test/clean_module_test.collection"
+        :scene
+      ]
+      [
+        "/test/module_test.script.script"
+        :code
+      ]
+      [
+        "/test/progress_indicator.collection"
+        :scene
+      ]
+      [
+        "/test/indicator_factory.factory.factory"
+        :cljfx-form-view
+      ]
+      [
+        "/test/progress_indicator.script"
+        :code
+      ]
+      [
+        "/assets/tile.atlas"
+        :scene
+      ]
+      [
+        "/test/indicator_test.collection"
+        :scene
+      ]
+      [
+        "/test/indicator_test.script"
+        :code
+      ]
+      [
+        "/main/main.collection"
+        :scene
+      ]
+      [
+        "/modules/progress_indicator/progress_indicator.collection"
+        :scene
+      ]
+      [
+        "/game.project"
+        :cljfx-form-view
       ]
     ]
   }

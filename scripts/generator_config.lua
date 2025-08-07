@@ -3,6 +3,9 @@
 
 local M = {}
 
+-- Подключаем модуль логирования
+local debug_logger = require("scripts.debug_logger")
+
 -- Импортируем универсальный CSV парсер
 local csv_parser = require("scripts.csv_parser")
 -- Импортируем утилиты
@@ -68,7 +71,9 @@ function M.load_generator_config()
                         outputs = {},
                         rates = {},
                         current_capacity = csv_parser.get_field_value(record, "M:Capacity", "number"), -- Инициализируем текущую емкость
-                        is_reloading = false
+                        is_reloading = false,
+                        reload_start_time = 0, -- Время начала перезарядки
+                        reload_end_time = 0    -- Время окончания перезарядки
                     },
                     automatic = {
                         capacity = csv_parser.get_field_value(record, "A:Capacity", "number"),
@@ -301,6 +306,119 @@ function M.debug_print_config()
         end
         print("")
     end
+end
+
+-- Функция для проверки, может ли генератор быть активирован (не на перезарядке)
+function M.can_activate_manual(generator_id)
+    local generator = generators[generator_id]
+    if not generator then
+        return false, "Generator not found"
+    end
+    
+
+    
+    -- Добавляем отладочную информацию (с ограничением)
+    debug_logger.log_with_throttle("generator_check_" .. generator_id, 
+        "GENERATOR CONFIG: Checking " .. generator_id .. " - capacity: " .. tostring(generator.manual.capacity) .. ", current: " .. tostring(generator.manual.current_capacity) .. ", reloading: " .. tostring(generator.manual.is_reloading), 
+        15.0)
+    
+    -- Проверяем, есть ли емкость
+    if not generator.manual.capacity or generator.manual.current_capacity <= 0 then
+        return false, "No capacity left"
+    end
+    
+    -- Проверяем, не на перезарядке ли
+    if generator.manual.is_reloading then
+        local current_time = os.clock()
+        if current_time < generator.manual.reload_end_time then
+            return false, "Still reloading"
+        else
+            -- Перезарядка закончилась
+            generator.manual.is_reloading = false
+            generator.manual.current_capacity = generator.manual.capacity
+            print("GENERATOR CONFIG: Reload finished for " .. generator_id .. ", capacity restored to " .. generator.manual.capacity)
+        end
+    end
+    
+    return true
+end
+
+-- Функция для активации генератора (уменьшает емкость и запускает перезарядку если нужно)
+function M.activate_manual(generator_id)
+    local generator = generators[generator_id]
+    if not generator then
+        return false, "Generator not found"
+    end
+    
+    -- Уменьшаем емкость
+    generator.manual.current_capacity = generator.manual.current_capacity - 1
+    
+    -- Если емкость закончилась, запускаем перезарядку
+    if generator.manual.current_capacity <= 0 and generator.manual.reload_sec then
+        local current_time = os.clock()
+        generator.manual.is_reloading = true
+        generator.manual.reload_start_time = current_time
+        generator.manual.reload_end_time = current_time + generator.manual.reload_sec
+        print("GENERATOR CONFIG: Generator " .. generator_id .. " started reloading for " .. generator.manual.reload_sec .. " seconds")
+        print("GENERATOR CONFIG: Reload start time: " .. current_time .. ", end time: " .. generator.manual.reload_end_time)
+    end
+    
+    return true
+end
+
+-- Функция для получения прогресса перезарядки (0.0 - 1.0)
+function M.get_reload_progress(generator_id)
+    local generator = generators[generator_id]
+    if not generator or not generator.manual.is_reloading then
+        return 1.0 -- Перезарядка не нужна или завершена
+    end
+    
+    local current_time = os.clock()
+    local total_reload_time = generator.manual.reload_sec
+    local elapsed_time = current_time - generator.manual.reload_start_time
+    
+    local progress = elapsed_time / total_reload_time
+    debug_logger.log_with_throttle("generator_progress_" .. generator_id, 
+        "GENERATOR CONFIG: Progress for " .. generator_id .. " - current: " .. current_time .. ", start: " .. generator.manual.reload_start_time .. ", elapsed: " .. elapsed_time .. ", progress: " .. progress, 
+        10.0)
+    return math.min(progress, 1.0)
+end
+
+-- Функция для получения оставшегося времени перезарядки в секундах
+function M.get_reload_remaining_time(generator_id)
+    local generator = generators[generator_id]
+    if not generator or not generator.manual.is_reloading then
+        return 0
+    end
+    
+    local current_time = os.clock()
+    local remaining = generator.manual.reload_end_time - current_time
+    return math.max(remaining, 0)
+end
+
+-- Функция для проверки, находится ли генератор на перезарядке
+function M.is_reloading(generator_id)
+    local generator = generators[generator_id]
+    if not generator then
+        return false
+    end
+    
+    if generator.manual.is_reloading then
+        local current_time = os.clock()
+        debug_logger.log_with_throttle("generator_reload_check_" .. generator_id, 
+            "GENERATOR CONFIG: Checking reload for " .. generator_id .. " - current: " .. current_time .. ", end: " .. generator.manual.reload_end_time .. ", remaining: " .. (generator.manual.reload_end_time - current_time), 
+            10.0)
+        if current_time >= generator.manual.reload_end_time then
+            -- Перезарядка закончилась
+            generator.manual.is_reloading = false
+            generator.manual.current_capacity = generator.manual.capacity
+            print("GENERATOR CONFIG: Reload finished for " .. generator_id .. " in is_reloading check")
+            return false
+        end
+        return true
+    end
+    
+    return false
 end
 
 return M 

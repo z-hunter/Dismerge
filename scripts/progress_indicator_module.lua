@@ -2,14 +2,18 @@
 local Indicator = {}
 Indicator.__index = Indicator
 
--- Путь к фабрике (локальный для коллекции)
-local FACTORY_URL = "indicator_factory_holder#collectionfactory"
+-- Путь к фабрике (через holder в main collection)
+local FACTORY_URL = "main:/indicator_factory_holder#collectionfactory"
 
-function Indicator:new(position)
+function Indicator:new(position, scale)
     local ids = collectionfactory.create(FACTORY_URL, position or vmath.vector3(0,0,0))
     local self = setmetatable({}, Indicator)
     self.ids = ids
     self.root = ids[hash("/indicator_root")]
+    scale = scale or vmath.vector3(1, 1, 1)
+    for _, id in pairs(ids) do
+        go.set_scale(scale, id)
+    end
     return self
 end
 

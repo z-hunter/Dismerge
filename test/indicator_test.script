@@ -1,17 +1,22 @@
 local Indicator = require "scripts.progress_indicator_module"
 
 function init(self)
-    print("INDICATOR TEST: Using OOP progress_indicator_module")
+    print("INDICATOR TEST: Using OOP progress_indicator_module (with scale and color)")
     self.indicators = {}
     self.timers = {0, 0, 0}
     self.indicator3_completed = false
 
-    -- Индикатор 1 (статичный)
-    self.indicators[1] = Indicator:new(vmath.vector3(300, 200, 0))
-    -- Индикатор 2 (медленный)
-    self.indicators[2] = Indicator:new(vmath.vector3(660, 200, 0))
-    -- Индикатор 3 (быстрый, самоуничтожение)
-    self.indicators[3] = Indicator:new(vmath.vector3(480, 440, 0))
+    -- Индикатор 1 (маленький, синий)
+    self.indicators[1] = Indicator:new(vmath.vector3(300, 200, 0), vmath.vector3(0.7, 0.7, 1))
+    self.indicators[1]:set_color(vmath.vector4(0.2, 0.6, 1.0, 1)) -- синий
+
+    -- Индикатор 2 (стандартный, зелёный)
+    self.indicators[2] = Indicator:new(vmath.vector3(660, 200, 0), vmath.vector3(1, 1, 1))
+    self.indicators[2]:set_color(vmath.vector4(0.2, 1.0, 0.2, 1)) -- зелёный
+
+    -- Индикатор 3 (большой, красный, самоуничтожение)
+    self.indicators[3] = Indicator:new(vmath.vector3(480, 440, 0), vmath.vector3(1.5, 1.5, 1))
+    self.indicators[3]:set_color(vmath.vector4(1.0, 0.2, 0.2, 1)) -- красный
 end
 
 function update(self, dt)

@@ -1,0 +1,22 @@
+name: "indicator_test"
+scale_along_z: 0
+
+embedded_instances {
+  id: "indicator_factory_holder"
+  data: "components {\n"
+  "  id: \"collectionfactory\"\n"
+  "  component: \"/modules/progress_indicator/indicator_factory.collectionfactory\"\n"
+  "}\n"
+  ""
+  position { x: 0.0 y: 0.0 z: 0.0 }
+}
+
+embedded_instances {
+  id: "test_controller"
+  data: "components {\n"
+  "  id: \"indicator_test_script\"\n"
+  "  component: \"/test/indicator_test.script\"\n"
+  "}\n"
+  ""
+  position { x: 0.0 y: 0.0 z: 0.0 }
+}

@@ -34,6 +34,8 @@ function init(self)
 		self.evo_id = "TLS"  -- Временное значение
 	end
 	
+
+	
 	-- Визуальное отображение будет обновлено после получения set_evo_id сообщения
 end
 
@@ -77,6 +79,9 @@ function on_message(self, message_id, message, sender)
 	elseif message_id == hash("set_position") then
 		-- НОВАЯ СИСТЕМА: Принудительная установка позиции (для следования за курсором)
 		go.set_position(message.position, ".")
+		if message.position and message.position.z and message.position.z > 0 then
+			print("DEBUG: TOKEN SET_POSITION Z = " .. tostring(message.position.z) .. " at pos (" .. tostring(message.position.x) .. ", " .. tostring(message.position.y) .. ")")
+		end
 		
 	elseif message_id == hash("move_to") then
 		-- НОВАЯ СИСТЕМА: Плавное движение к цели
@@ -121,5 +126,7 @@ function on_message(self, message_id, message, sender)
 		}
 		
 		msg.post(sender, "token_info", info)
+		
+
 	end
 end 
