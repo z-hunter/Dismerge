@@ -242,6 +242,13 @@ function create_token_on_board(self, evo_id, level, grid_x, grid_y, initial_z)
     pos.z = initial_z or 0
     local properties = { level = level, grid_x = grid_x, grid_y = grid_y }
     local token_id = factory.create("#token_factory", pos, nil, properties, 1)
+    
+    -- Проверяем, что токен был создан успешно
+    if not token_id then
+        print("ERROR: Failed to create token - factory.create returned nil")
+        return nil
+    end
+    
     local token_key = utils.get_token_key(grid_x, grid_y)
     local generator = generator_config.get_generator(utils.create_token_string(evo_id, level))
     if generator and generator.manual then
@@ -288,20 +295,27 @@ function update(self, dt)
 		local i = 1
 		while i <= #self.animating_tokens do
 			local anim = self.animating_tokens[i]
-			local elapsed = current_time - anim.start_time
-			local progress = elapsed / anim.duration
 			
-			if progress >= 1.0 then
-				-- Анимация завершена - перемещаем фишку на финальную позицию
-				local end_pos = vmath.vector3(anim.end_pos.x, anim.end_pos.y, 0)
-				msg.post(anim.token_id, "set_position", { position = end_pos })
+			-- Проверяем, что токен всё ещё существует
+			if not go.exists(anim.token_id) then
+				print("WARNING: Animating token no longer exists, removing from animation list")
 				table.remove(self.animating_tokens, i)
 			else
-				-- Обновляем позицию
-				local current_pos = anim.start_pos + (anim.end_pos - anim.start_pos) * progress
-				current_pos.z = 0
-				msg.post(anim.token_id, "set_position", { position = current_pos })
-				i = i + 1
+				local elapsed = current_time - anim.start_time
+				local progress = elapsed / anim.duration
+				
+				if progress >= 1.0 then
+					-- Анимация завершена - перемещаем фишку на финальную позицию
+					local end_pos = vmath.vector3(anim.end_pos.x, anim.end_pos.y, 0)
+					msg.post(anim.token_id, "set_position", { position = end_pos })
+					table.remove(self.animating_tokens, i)
+				else
+					-- Обновляем позицию
+					local current_pos = anim.start_pos + (anim.end_pos - anim.start_pos) * progress
+					current_pos.z = 0
+					msg.post(anim.token_id, "set_position", { position = current_pos })
+					i = i + 1
+				end
 			end
 		end
 	end
@@ -753,34 +767,43 @@ end
 
 -- НОВАЯ СИСТЕМА: Функция выполнения мерджа
 function perform_merge(self, target_cell, target_token, target_key)
-	-- Удаляем индикаторы генераторов если они есть
-	local dragged_generator_id = utils.create_token_string(self.dragged_evo_id, self.dragged_level)
-	local target_generator_id = utils.create_token_string(target_token.evo_id, target_token.level)
-	
-	if generator_config.is_generator(dragged_generator_id) then
-		local dragged_key = utils.get_token_key(self.dragged_from.x, self.dragged_from.y)
-		remove_generator_indicator(self, dragged_key)
-		print("BOARD: Removed indicator for dragged generator " .. dragged_generator_id)
-	end
-	
-	if generator_config.is_generator(target_generator_id) then
-		remove_generator_indicator(self, target_key)
-		print("BOARD: Removed indicator for target generator " .. target_generator_id)
-	end
-	
-	-- Удаляем старые фишки (с проверкой существования)
-	if target_token and target_token.id then
-	go.delete(target_token.id)
-	end
-	if self.dragged_token then
-	go.delete(self.dragged_token)
-	end
-	
 	-- Получаем результат слияния из эволюционных таблиц
 	local merge_result = evolution_tables.get_merge_result(target_token.evo_id, target_token.level)
 	
 	if merge_result then
+		-- Сначала пытаемся создать новый токен
 		local token_key = create_token_on_board(self, merge_result.evo_id, merge_result.level, target_cell.x, target_cell.y)
+		
+		-- Проверяем, что токен был создан успешно
+		if not token_key then
+			print("ERROR: Merge failed - could not create new token, keeping original tokens")
+			return
+		end
+		
+		-- Только после успешного создания нового токена удаляем старые
+		-- Удаляем индикаторы генераторов если они есть
+		local dragged_generator_id = utils.create_token_string(self.dragged_evo_id, self.dragged_level)
+		local target_generator_id = utils.create_token_string(target_token.evo_id, target_token.level)
+		
+		if generator_config.is_generator(dragged_generator_id) then
+			local dragged_key = utils.get_token_key(self.dragged_from.x, self.dragged_from.y)
+			remove_generator_indicator(self, dragged_key)
+			print("BOARD: Removed indicator for dragged generator " .. dragged_generator_id)
+		end
+		
+		if generator_config.is_generator(target_generator_id) then
+			remove_generator_indicator(self, target_key)
+			print("BOARD: Removed indicator for target generator " .. target_generator_id)
+		end
+		
+		-- Удаляем старые фишки (с проверкой существования)
+		if target_token and target_token.id and go.exists(target_token.id) then
+			go.delete(target_token.id)
+		end
+		if self.dragged_token and go.exists(self.dragged_token) then
+			go.delete(self.dragged_token)
+		end
+		
 		local new_token = self.tokens[token_key]
 		print("BOARD: Created merged token " .. merge_result.evo_id .. " level " .. merge_result.level .. " at grid(" .. target_cell.x .. ", " .. target_cell.y .. ") key=" .. tostring(token_key))
 		print("DEBUG: MERGE - new_token.id=" .. tostring(new_token and new_token.id) .. ", new_token exists=" .. tostring(new_token ~= nil))

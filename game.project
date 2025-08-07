@@ -19,3 +19,9 @@ scale_mode = stretch
 title = Dismerge
 dependencies#0 = https://github.com/defold/extension-camera/archive/master.zip
 
+[sprite]
+max_count = 256
+
+[label]
+max_count = 256
+
