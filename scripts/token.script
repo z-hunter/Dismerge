@@ -34,7 +34,9 @@ function init(self)
 		self.evo_id = "TLS"  -- Временное значение
 	end
 	
-
+	-- Скрываем иконку генератора при инициализации
+	go.set("#generator_icon", "visible", false)
+	print("TOKEN: Initialized token at grid(" .. self.grid_x .. ", " .. self.grid_y .. ") with hidden generator icon")
 	
 	-- Визуальное отображение будет обновлено после получения set_evo_id сообщения
 end
@@ -64,6 +66,7 @@ end
 function on_message(self, message_id, message, sender)
 	if message_id == hash("start_drag") then
 		-- НОВАЯ СИСТЕМА: Начало перетаскивания
+		print("TOKEN: Received start_drag at grid(" .. self.grid_x .. ", " .. self.grid_y .. ") evo_id=" .. tostring(self.evo_id) .. " level=" .. tostring(self.level))
 		self.is_dragging = true
 		-- Визуальные эффекты для перетаскивания
 		go.set_scale(vmath.vector3(1.2, 1.2, 1.0), ".")
@@ -73,6 +76,7 @@ function on_message(self, message_id, message, sender)
 		
 	elseif message_id == hash("stop_drag") then
 		-- НОВАЯ СИСТЕМА: Окончание перетаскивания
+		print("TOKEN: Received stop_drag at grid(" .. self.grid_x .. ", " .. self.grid_y .. ") evo_id=" .. tostring(self.evo_id) .. " level=" .. tostring(self.level))
 		self.is_dragging = false
 		-- Возвращаем нормальный размер и цвет
 		go.set_scale(vmath.vector3(1.0, 1.0, 1.0), ".")
@@ -131,10 +135,12 @@ function on_message(self, message_id, message, sender)
 		
 	elseif message_id == hash("show_generator_icon") then
 		-- Показываем иконку генератора
+		print("TOKEN: Received show_generator_icon at grid(" .. self.grid_x .. ", " .. self.grid_y .. ") evo_id=" .. tostring(self.evo_id) .. " level=" .. tostring(self.level))
 		go.set("#generator_icon", "visible", true)
 		
 	elseif message_id == hash("hide_generator_icon") then
 		-- Скрываем иконку генератора
+		print("TOKEN: Received hide_generator_icon at grid(" .. self.grid_x .. ", " .. self.grid_y .. ") evo_id=" .. tostring(self.evo_id) .. " level=" .. tostring(self.level))
 		go.set("#generator_icon", "visible", false)
 	end
 end 

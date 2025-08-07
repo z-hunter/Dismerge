@@ -323,8 +323,8 @@ function update(self, dt)
 	-- Обновление визуала генераторов (индикаторы перезарядки)
 	update_generators_visual(self)
 	
-	-- Обновление иконок генераторов
-	update_generator_icons(self)
+	-- ВРЕМЕННО ОТКЛЮЧЕНО для отладки: Обновление иконок генераторов
+	-- update_generator_icons(self)
 end
 
 function on_message(self, message_id, message, sender)
@@ -1114,9 +1114,14 @@ function update_generator_icons(self)
 	for token_key, token in pairs(self.tokens) do
 		local generator_id = utils.create_token_string(token.evo_id, token.level)
 		
+		-- ОТЛАДКА: Проверяем каждый токен
+		print("DEBUG: Checking token " .. tostring(generator_id) .. " at " .. tostring(token_key))
+		
 		-- Проверяем, является ли фишка генератором с ручной активацией
 		if generator_config.is_generator(generator_id) then
 			local generator = generator_config.get_generator(generator_id)
+			print("DEBUG: Token " .. generator_id .. " is a generator, manual=" .. tostring(generator and generator.manual ~= nil))
+			
 			if generator and generator.manual then
 				local grid_x, grid_y = utils.parse_token_key(token_key)
 				if grid_x and grid_y then
@@ -1126,13 +1131,24 @@ function update_generator_icons(self)
 					-- Проверяем емкость генератора
 					local current_capacity = token.current_capacity or generator.manual.capacity
 					
+					print("DEBUG: Generator " .. generator_id .. " - reloading=" .. tostring(is_reloading) .. ", dragging=" .. tostring(is_dragging) .. ", capacity=" .. tostring(current_capacity))
+					
 					-- Показываем иконку только если генератор готов и не перетаскивается
 					if not is_reloading and not is_dragging and current_capacity and current_capacity > 0 then
+						print("DEBUG: Showing icon for generator " .. generator_id)
 						show_generator_icon(self, grid_x, grid_y)
 					else
+						print("DEBUG: Hiding icon for generator " .. generator_id)
 						hide_generator_icon(self, grid_x, grid_y)
 					end
 				end
+			end
+		else
+			-- ОТЛАДКА: Скрываем иконку для не-генераторов
+			local grid_x, grid_y = utils.parse_token_key(token_key)
+			if grid_x and grid_y then
+				print("DEBUG: Token " .. generator_id .. " is NOT a generator, hiding icon")
+				hide_generator_icon(self, grid_x, grid_y)
 			end
 		end
 	end
