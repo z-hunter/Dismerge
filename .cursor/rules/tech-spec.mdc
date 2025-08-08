@@ -1,0 +1,5 @@
+---
+description: Архитектура проекта, API, а также возможные проблемы и методы решения описаны в tech-spec.md
+globs:
+alwaysApply: false
+---
