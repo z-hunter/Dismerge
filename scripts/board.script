@@ -1202,17 +1202,19 @@ function show_generator_icon(self, grid_x, grid_y)
 		local icon_id = factory.create("#generator_icon_factory", icon_pos)
 		self.generator_icons[token_key] = icon_id
 		
-		-- Инициализируем анимацию для этой иконки
+		-- Инициализируем анимацию для этой иконки только если её ещё нет
 		if not self.icon_animations then
 			self.icon_animations = {}
 		end
-		self.icon_animations[token_key] = {
-			timer = 0,
-			phase = 0,
-			original_scale = vmath.vector3(1.0, 1.0, 1),
-			animation_duration = 0.2,
-			pause_duration = 5.0
-		}
+		if not self.icon_animations[token_key] then
+			self.icon_animations[token_key] = {
+				timer = 0,
+				phase = 0,
+				original_scale = vmath.vector3(1.0, 1.0, 1),
+				animation_duration = 0.2,
+				pause_duration = 5.0
+			}
+		end
 		
 		print("BOARD: Created generator icon at grid(" .. grid_x .. ", " .. grid_y .. ") pos=" .. tostring(icon_pos) .. " id=" .. tostring(icon_id))
 	end
@@ -1236,6 +1238,14 @@ end
 
 -- Функция обновления иконок генераторов
 function update_generator_icons(self)
+	-- Сохраняем состояние анимации существующих иконок
+	local saved_animations = {}
+	if self.icon_animations then
+		for token_key, animation in pairs(self.icon_animations) do
+			saved_animations[token_key] = animation
+		end
+	end
+	
 	-- Сначала очищаем все существующие иконки
 	for token_key, icon_id in pairs(self.generator_icons) do
 		if icon_id then
@@ -1243,6 +1253,9 @@ function update_generator_icons(self)
 		end
 	end
 	self.generator_icons = {}
+	
+	-- Восстанавливаем состояние анимации
+	self.icon_animations = saved_animations
 	
 	-- Теперь создаем иконки только для готовых генераторов
 	for token_key, token in pairs(self.tokens) do
