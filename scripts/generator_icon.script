@@ -1,0 +1,94 @@
+-- Скрипт для иконки генератора с анимацией
+-- Анимация: уменьшение -> увеличение -> уменьшение -> нормальный размер -> пауза 5 сек
+
+local function init(self)
+	-- Начальные параметры анимации
+	self.original_scale = vmath.vector3(0.5, 0.5, 1)  -- Соответствует scale в .go файле
+	self.current_scale = self.original_scale
+	self.animation_timer = 0
+	self.animation_phase = 0  -- 0: уменьшение, 1: увеличение, 2: уменьшение, 3: нормальный, 4: пауза
+	self.animation_duration = 0.2  -- Длительность каждой фазы анимации
+	self.pause_duration = 5.0  -- Длительность паузы между циклами
+	
+	-- Устанавливаем начальный размер
+	go.set_scale(self.original_scale)
+	
+	print("GENERATOR ICON: Initialized with animation at " .. tostring(go.get_position()) .. " scale " .. tostring(self.original_scale))
+end
+
+local function update(self, dt)
+	-- Обновляем таймер анимации
+	self.animation_timer = self.animation_timer + dt
+	
+	local phase_progress = 0
+	local current_phase_duration = 0
+	
+	-- Определяем текущую фазу и прогресс
+	if self.animation_phase == 0 then
+		-- Фаза 0: Уменьшение до 0.7
+		current_phase_duration = self.animation_duration
+		phase_progress = math.min(self.animation_timer / current_phase_duration, 1.0)
+		self.current_scale = vmath.lerp(phase_progress, self.original_scale, vmath.vector3(0.7, 0.7, 1))
+		
+		if self.animation_timer >= current_phase_duration then
+			self.animation_phase = 1
+			self.animation_timer = 0
+		end
+		
+	elseif self.animation_phase == 1 then
+		-- Фаза 1: Увеличение до 1.3
+		current_phase_duration = self.animation_duration
+		phase_progress = math.min(self.animation_timer / current_phase_duration, 1.0)
+		self.current_scale = vmath.lerp(phase_progress, vmath.vector3(0.7, 0.7, 1), vmath.vector3(1.3, 1.3, 1))
+		
+		if self.animation_timer >= current_phase_duration then
+			self.animation_phase = 2
+			self.animation_timer = 0
+		end
+		
+	elseif self.animation_phase == 2 then
+		-- Фаза 2: Уменьшение до 0.8
+		current_phase_duration = self.animation_duration
+		phase_progress = math.min(self.animation_timer / current_phase_duration, 1.0)
+		self.current_scale = vmath.lerp(phase_progress, vmath.vector3(1.3, 1.3, 1), vmath.vector3(0.8, 0.8, 1))
+		
+		if self.animation_timer >= current_phase_duration then
+			self.animation_phase = 3
+			self.animation_timer = 0
+		end
+		
+	elseif self.animation_phase == 3 then
+		-- Фаза 3: Возврат к нормальному размеру
+		current_phase_duration = self.animation_duration
+		phase_progress = math.min(self.animation_timer / current_phase_duration, 1.0)
+		self.current_scale = vmath.lerp(phase_progress, vmath.vector3(0.8, 0.8, 1), self.original_scale)
+		
+		if self.animation_timer >= current_phase_duration then
+			self.animation_phase = 4
+			self.animation_timer = 0
+		end
+		
+	elseif self.animation_phase == 4 then
+		-- Фаза 4: Пауза 5 секунд
+		if self.animation_timer >= self.pause_duration then
+			self.animation_phase = 0
+			self.animation_timer = 0
+		end
+	end
+	
+	-- Применяем текущий размер
+	go.set_scale(self.current_scale)
+	
+	-- Отладочное сообщение каждые 2 секунды
+	if self.animation_timer % 2 < dt then
+		print("GENERATOR ICON: Animation phase " .. self.animation_phase .. " scale " .. tostring(self.current_scale))
+	end
+end
+
+local function on_message(self, message_id, message, sender)
+	-- Обработка сообщений если понадобится
+end
+
+local function final(self)
+	-- Очистка при уничтожении
+end

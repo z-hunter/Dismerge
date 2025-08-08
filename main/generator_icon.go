@@ -1,3 +1,7 @@
+components {
+  id: "script"
+  component: "/scripts/generator_icon.script"
+}
 embedded_components {
   id: "sprite"
   type: "sprite"
@@ -12,14 +16,8 @@ embedded_components {
   "  texture: \"/assets/tile.atlas\"\n"
   "}\n"
   ""
-  position {
-    x: 20.0
-    y: -20.0
-    z: 0.1
-  }
   scale {
-    x: 0.5
-    y: 0.5
-    z: 1.0
+    x: 1.0
+    y: 1.0
   }
 }

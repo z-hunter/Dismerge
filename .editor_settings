@@ -2,10 +2,6 @@
   :workflow {
     :recent-files [
       [
-        "/scripts/token.script"
-        :code
-      ]
-      [
         "/scripts/ui.script"
         :code
       ]
@@ -127,6 +123,10 @@
       ]
       [
         "/main/token.go"
+        :scene
+      ]
+      [
+        "/main/generator_icon.go"
         :scene
       ]
     ]

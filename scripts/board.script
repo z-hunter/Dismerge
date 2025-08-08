@@ -266,6 +266,13 @@ function create_token_on_board(self, evo_id, level, grid_x, grid_y, initial_z)
         self.tokens[token_key] = { id = token_id, level = level, evo_id = evo_id }
     end
     msg.post(token_id, "set_evo_id", { evo_id = evo_id })
+    
+    -- Обновляем иконки генераторов только если созданный токен является генератором
+    local generator_id = utils.create_token_string(evo_id, level)
+    if generator_config.is_generator(generator_id) then
+        update_generator_icons(self)
+    end
+    
     return token_key
 end
 
@@ -324,8 +331,86 @@ function update(self, dt)
 	-- Обновление визуала генераторов (индикаторы перезарядки)
 	update_generators_visual(self)
 	
-	-- ВРЕМЕННО ОТКЛЮЧЕНО для отладки: Обновление иконок генераторов
-	-- update_generator_icons(self)
+	-- Обновление анимации иконок генераторов
+	update_icon_animations(self, dt)
+end
+
+-- Функция обновления анимации иконок генераторов
+function update_icon_animations(self, dt)
+	if not self.icon_animations then
+		return
+	end
+	
+	for token_key, animation in pairs(self.icon_animations) do
+		local icon_id = self.generator_icons[token_key]
+		if icon_id and go.exists(icon_id) then
+			-- Обновляем таймер анимации
+			animation.timer = animation.timer + dt
+			
+			local phase_progress = 0
+			local current_phase_duration = 0
+			local current_scale = animation.original_scale
+			
+			-- Определяем текущую фазу и прогресс
+			if animation.phase == 0 then
+				-- Фаза 0: Уменьшение до 0.7
+				current_phase_duration = animation.animation_duration
+				phase_progress = math.min(animation.timer / current_phase_duration, 1.0)
+				current_scale = vmath.lerp(phase_progress, animation.original_scale, vmath.vector3(0.35, 0.35, 1))
+				
+				if animation.timer >= current_phase_duration then
+					animation.phase = 1
+					animation.timer = 0
+				end
+				
+			elseif animation.phase == 1 then
+				-- Фаза 1: Увеличение до 1.3
+				current_phase_duration = animation.animation_duration
+				phase_progress = math.min(animation.timer / current_phase_duration, 1.0)
+				current_scale = vmath.lerp(phase_progress, vmath.vector3(0.35, 0.35, 1), vmath.vector3(0.65, 0.65, 1))
+				
+				if animation.timer >= current_phase_duration then
+					animation.phase = 2
+					animation.timer = 0
+				end
+				
+			elseif animation.phase == 2 then
+				-- Фаза 2: Уменьшение до 0.8
+				current_phase_duration = animation.animation_duration
+				phase_progress = math.min(animation.timer / current_phase_duration, 1.0)
+				current_scale = vmath.lerp(phase_progress, vmath.vector3(0.65, 0.65, 1), vmath.vector3(0.4, 0.4, 1))
+				
+				if animation.timer >= current_phase_duration then
+					animation.phase = 3
+					animation.timer = 0
+				end
+				
+			elseif animation.phase == 3 then
+				-- Фаза 3: Возврат к нормальному размеру
+				current_phase_duration = animation.animation_duration
+				phase_progress = math.min(animation.timer / current_phase_duration, 1.0)
+				current_scale = vmath.lerp(phase_progress, vmath.vector3(0.4, 0.4, 1), animation.original_scale)
+				
+				if animation.timer >= current_phase_duration then
+					animation.phase = 4
+					animation.timer = 0
+				end
+				
+			elseif animation.phase == 4 then
+				-- Фаза 4: Пауза 5 секунд
+				if animation.timer >= animation.pause_duration then
+					animation.phase = 0
+					animation.timer = 0
+				end
+			end
+			
+			-- Применяем текущий размер
+			go.set_scale(current_scale, icon_id)
+		else
+			-- Иконка больше не существует, удаляем анимацию
+			self.icon_animations[token_key] = nil
+		end
+	end
 end
 
 function on_message(self, message_id, message, sender)
@@ -554,6 +639,9 @@ function handle_token_release(self, mouse_x, mouse_y)
 	
 	-- Очищаем состояние перетаскивания
 	clear_drag_state(self)
+	
+	-- Обновляем иконки генераторов после очистки состояния перетаскивания
+	update_generator_icons(self)
 end
 
 -- Функция обновления визуала всех генераторов на поле
@@ -679,6 +767,9 @@ function is_generator_reloading(self, token_key)
             if generator and generator.manual then
                 token.current_capacity = generator.manual.capacity
             end
+            
+            -- Обновляем иконки генераторов после завершения перезарядки
+            update_generator_icons(self)
         end
     end
     return token.is_reloading
@@ -842,9 +933,6 @@ function perform_merge(self, target_cell, target_token, target_key)
 			select_cell(self, target_cell.x, target_cell.y)
 		end
 		check_selection_after_drag(self)
-		
-		-- Обновляем иконки генераторов после мерджа
-		update_generator_icons(self)
 	else
 		print("BOARD: Merge failed - no evolution result for " .. target_token.evo_id .. " level " .. target_token.level)
 	end
@@ -901,9 +989,6 @@ function perform_move(self, target_cell)
 
     -- Проверяем выделение после перемещения
     check_selection_after_drag(self)
-    
-    -- Обновляем иконки генераторов после перемещения
-    update_generator_icons(self)
 end
 
 -- НОВАЯ СИСТЕМА: Функция выполнения возврата
@@ -964,9 +1049,6 @@ function perform_return(self)
 	
 	-- Проверяем выделение после возврата
 	check_selection_after_drag(self)
-	
-	-- Обновляем иконки генераторов после возврата
-	update_generator_icons(self)
 end
 
 -- СИСТЕМА ВЫДЕЛЕНИЯ: Функция проверки выделения после перетаскивания
@@ -1107,44 +1189,68 @@ end
 
 -- Функция показа иконки генератора
 function show_generator_icon(self, grid_x, grid_y)
-	local token_key = utils.create_token_key(grid_x, grid_y)
+	local token_key = utils.get_token_key(grid_x, grid_y)
 	if self.tokens[token_key] and not self.generator_icons[token_key] then
-		local token = self.tokens[token_key]
-		local token_pos = go.get_position(token.id)
+		-- Используем координаты клетки для позиционирования иконки
+		local cell_pos = grid_to_screen(grid_x, grid_y)
 		local icon_pos = vmath.vector3(
-			token_pos.x + 20,
-			token_pos.y - 20,
-			token_pos.z + 0.1
+			cell_pos.x + 20,  -- Смещение вправо от центра клетки
+			cell_pos.y - 20,  -- Смещение вниз от центра клетки
+			cell_pos.z + 0.5  -- Выше клетки для видимости
 		)
 		
 		local icon_id = factory.create("#generator_icon_factory", icon_pos)
 		self.generator_icons[token_key] = icon_id
-		print("BOARD: Created generator icon at grid(" .. grid_x .. ", " .. grid_y .. ")")
+		
+		-- Инициализируем анимацию для этой иконки
+		if not self.icon_animations then
+			self.icon_animations = {}
+		end
+		self.icon_animations[token_key] = {
+			timer = 0,
+			phase = 0,
+			original_scale = vmath.vector3(1.0, 1.0, 1),
+			animation_duration = 0.2,
+			pause_duration = 5.0
+		}
+		
+		print("BOARD: Created generator icon at grid(" .. grid_x .. ", " .. grid_y .. ") pos=" .. tostring(icon_pos) .. " id=" .. tostring(icon_id))
 	end
 end
 
 -- Функция скрытия иконки генератора
 function hide_generator_icon(self, grid_x, grid_y)
-	local token_key = utils.create_token_key(grid_x, grid_y)
+	local token_key = utils.get_token_key(grid_x, grid_y)
 	if self.generator_icons[token_key] then
 		go.delete(self.generator_icons[token_key])
 		self.generator_icons[token_key] = nil
+		
+		-- Очищаем анимацию для этой иконки
+		if self.icon_animations and self.icon_animations[token_key] then
+			self.icon_animations[token_key] = nil
+		end
+		
 		print("BOARD: Removed generator icon at grid(" .. grid_x .. ", " .. grid_y .. ")")
 	end
 end
 
 -- Функция обновления иконок генераторов
 function update_generator_icons(self)
+	-- Сначала очищаем все существующие иконки
+	for token_key, icon_id in pairs(self.generator_icons) do
+		if icon_id then
+			go.delete(icon_id)
+		end
+	end
+	self.generator_icons = {}
+	
+	-- Теперь создаем иконки только для готовых генераторов
 	for token_key, token in pairs(self.tokens) do
 		local generator_id = utils.create_token_string(token.evo_id, token.level)
-		
-		-- ОТЛАДКА: Проверяем каждый токен
-		print("DEBUG: Checking token " .. tostring(generator_id) .. " at " .. tostring(token_key))
 		
 		-- Проверяем, является ли фишка генератором с ручной активацией
 		if generator_config.is_generator(generator_id) then
 			local generator = generator_config.get_generator(generator_id)
-			print("DEBUG: Token " .. generator_id .. " is a generator, manual=" .. tostring(generator and generator.manual ~= nil))
 			
 			if generator and generator.manual then
 				local grid_x, grid_y = utils.parse_token_key(token_key)
@@ -1155,24 +1261,11 @@ function update_generator_icons(self)
 					-- Проверяем емкость генератора
 					local current_capacity = token.current_capacity or generator.manual.capacity
 					
-					print("DEBUG: Generator " .. generator_id .. " - reloading=" .. tostring(is_reloading) .. ", dragging=" .. tostring(is_dragging) .. ", capacity=" .. tostring(current_capacity))
-					
 					-- Показываем иконку только если генератор готов и не перетаскивается
 					if not is_reloading and not is_dragging and current_capacity and current_capacity > 0 then
-						print("DEBUG: Showing icon for generator " .. generator_id)
 						show_generator_icon(self, grid_x, grid_y)
-					else
-						print("DEBUG: Hiding icon for generator " .. generator_id)
-						hide_generator_icon(self, grid_x, grid_y)
 					end
 				end
-			end
-		else
-			-- ОТЛАДКА: Скрываем иконку для не-генераторов
-			local grid_x, grid_y = utils.parse_token_key(token_key)
-			if grid_x and grid_y then
-				print("DEBUG: Token " .. generator_id .. " is NOT a generator, hiding icon")
-				hide_generator_icon(self, grid_x, grid_y)
 			end
 		end
 	end

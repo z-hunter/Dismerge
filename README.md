@@ -16,6 +16,7 @@ A merge-2 puzzle game built with the Defold engine. Players drag and drop tokens
 ## 📖 Documentation
 
 See [tech-spec.md](tech-spec.md) for detailed technical specifications and architecture documentation.
+See also [gdd.md](gdd.md) 
 
 ## 🤝 Contributing
 
