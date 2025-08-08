@@ -74,7 +74,8 @@ function M.load_generator_config()
                         is_reloading = false,
                         reload_start_time = 0, -- Время начала перезарядки
                         reload_end_time = 0,    -- Время окончания перезарядки
-                        used_activations = 0 -- Счетчик использованных активаций
+                        used_activations = 0, -- Счетчик использованных активаций
+                        completed_cycles = 0 -- Счетчик завершенных циклов
                     },
                     automatic = {
                         capacity = csv_parser.get_field_value(record, "A:Capacity", "number"),
@@ -428,30 +429,30 @@ function M.is_disposable(generator_id)
     return generator and generator.dispose_after and generator.dispose_after > 0
 end
 
--- Функция для получения количества оставшихся активаций
-function M.get_remaining_activations(generator_id)
+-- Функция для получения количества оставшихся циклов
+function M.get_remaining_cycles(generator_id)
     local generator = generators[generator_id]
     if not generator or not generator.dispose_after then
         return nil
     end
     
-    local used_activations = generator.manual.used_activations or 0
-    return math.max(0, generator.dispose_after - used_activations)
+    local completed_cycles = generator.manual.completed_cycles or 0
+    return math.max(0, generator.dispose_after - completed_cycles)
 end
 
--- Функция для увеличения счетчика использованных активаций
-function M.increment_activation_count(generator_id)
+-- Функция для увеличения счетчика завершенных циклов
+function M.increment_cycle_count(generator_id)
     local generator = generators[generator_id]
     if not generator or not generator.dispose_after then
         return false
     end
     
-    if not generator.manual.used_activations then
-        generator.manual.used_activations = 0
+    if not generator.manual.completed_cycles then
+        generator.manual.completed_cycles = 0
     end
     
-    generator.manual.used_activations = generator.manual.used_activations + 1
-    print("GENERATOR CONFIG: Incremented activation count for " .. generator_id .. " to " .. generator.manual.used_activations .. "/" .. generator.dispose_after)
+    generator.manual.completed_cycles = generator.manual.completed_cycles + 1
+    print("GENERATOR CONFIG: Incremented cycle count for " .. generator_id .. " to " .. generator.manual.completed_cycles .. "/" .. generator.dispose_after)
     
     return true
 end
@@ -463,8 +464,8 @@ function M.should_dispose(generator_id)
         return false
     end
     
-    local used_activations = generator.manual.used_activations or 0
-    return used_activations >= generator.dispose_after
+    local completed_cycles = generator.manual.completed_cycles or 0
+    return completed_cycles >= generator.dispose_after
 end
 
 -- Функция для получения ID фишки, в которую превращается генератор
@@ -477,12 +478,12 @@ function M.get_dispose_to(generator_id)
     return generator.dispose_to
 end
 
--- Функция для сброса счетчика активаций (для тестирования)
-function M.reset_activation_count(generator_id)
+-- Функция для сброса счетчика циклов (для тестирования)
+function M.reset_cycle_count(generator_id)
     local generator = generators[generator_id]
     if generator then
-        generator.manual.used_activations = 0
-        print("GENERATOR CONFIG: Reset activation count for " .. generator_id)
+        generator.manual.completed_cycles = 0
+        print("GENERATOR CONFIG: Reset cycle count for " .. generator_id)
     end
 end
 
