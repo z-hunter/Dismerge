@@ -1,6 +1,6 @@
 Generators,,,,,,,,,,,,,
 ,id,comment,Dispose after,Dispose to,M:Capacity,M:Reload(sec),M:Output,M:Rate,A:Capacity,A:Timer(sec),A:Reload(sec),A:Output,A:Rate
-,GEN_P-6,компост,,,20,10,P_APP-1,5,,,,,
+,GEN_P-6,компост,2,GEN_P-5,10,10,P_APP-1,5,,,,,
 ,,,,,,,P_APP-2,1,,,,,
 ,,,,,,,P_PIN-1,3,,,,,
 ,,,,,,,P_PIN-2,1,,,,,
@@ -8,4 +8,3 @@ Generators,,,,,,,,,,,,,
 ,,,,,,,P_APP-2,1,,,,,
 ,,,,,,,P_PIN-1,3,,,,,
 ,,,,,,,P_PIN-2,1,,,,,
-,GEN_P-8,тестовый одноразовый,3,,5,2,P_APP-1,1,,,,,
