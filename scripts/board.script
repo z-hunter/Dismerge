@@ -262,6 +262,12 @@ function create_token_on_board(self, evo_id, level, grid_x, grid_y, initial_z)
             reload_start_time = 0,
             reload_end_time = 0
         }
+        
+        -- Сбрасываем счетчик циклов для одноразовых генераторов при создании нового экземпляра
+        if generator_config.is_disposable(utils.create_token_string(evo_id, level)) then
+            generator.manual.completed_cycles = 0
+            print("BOARD: Reset completed_cycles for new disposable generator " .. utils.create_token_string(evo_id, level))
+        end
     else
         self.tokens[token_key] = { id = token_id, level = level, evo_id = evo_id }
     end
@@ -1333,9 +1339,8 @@ function initialize_generators(self)
 					
 					-- Инициализируем счетчик циклов для одноразовых генераторов
 					if generator_config.is_disposable(generator_id) then
-						if not generator.manual.completed_cycles then
-							generator.manual.completed_cycles = 0
-						end
+						-- Сбрасываем счетчик циклов для новых экземпляров одноразовых генераторов
+						generator.manual.completed_cycles = 0
 						local remaining = generator_config.get_remaining_cycles(generator_id)
 						print("BOARD: Initialized disposable generator " .. generator_id .. " with capacity " .. (generator.manual.capacity or 0) .. " and " .. (remaining or 0) .. " remaining cycles")
 					else
