@@ -730,8 +730,8 @@ function update_generators_visual(self)
 		
 		-- Проверяем, является ли фишка генератором
 		if generator_config.is_generator(generator_id) then
-			local is_reloading = is_generator_reloading(self, token_key)
-			local is_auto_reloading = token.is_auto_reloading
+			local is_reloading = token.is_reloading -- Проверяем только ручные генераторы
+			local is_auto_reloading = token.is_auto_reloading -- Проверяем только автоматические генераторы
 			
 			-- Обновляем визуал только если генератор перезаряжается или имеет индикатор
 			if is_reloading or is_auto_reloading or self.generator_indicators[token_key] or self.generator_auto_indicators[token_key] then
@@ -743,9 +743,9 @@ end
 
 -- Функция обновления визуала генератора
 function update_generator_visual(self, generator_id, token_key, token)
-	local is_reloading = is_generator_reloading(self, token_key)
+	local is_reloading = token.is_reloading -- Проверяем только ручные генераторы
 	local reload_progress = get_generator_reload_progress(self, token_key)
-	local is_auto_reloading = token.is_auto_reloading
+	local is_auto_reloading = token.is_auto_reloading -- Проверяем только автоматические генераторы
 	local auto_reload_progress = get_generator_auto_reload_progress(self, token_key)
 	
 	-- Если генератор перетаскивается, удаляем все индикаторы
