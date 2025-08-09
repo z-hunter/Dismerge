@@ -135,6 +135,7 @@ function init(self)
 	
 	-- СИСТЕМА ИНДИКАТОРОВ ПРОГРЕССА ГЕНЕРАТОРОВ
 	self.generator_indicators = {} -- таблица индикаторов по ключу "x_y"
+	self.generator_auto_indicators = {} -- таблица индикаторов автоматических генераторов по ключу "x_y"
 	self.generator_icons = {} -- таблица иконок генераторов по ключу "x_y"
 
 	-- Загружаем эволюционные таблицы
@@ -730,9 +731,10 @@ function update_generators_visual(self)
 		-- Проверяем, является ли фишка генератором
 		if generator_config.is_generator(generator_id) then
 			local is_reloading = is_generator_reloading(self, token_key)
+			local is_auto_reloading = token.is_auto_reloading
 			
 			-- Обновляем визуал только если генератор перезаряжается или имеет индикатор
-			if is_reloading or self.generator_indicators[token_key] then
+			if is_reloading or is_auto_reloading or self.generator_indicators[token_key] or self.generator_auto_indicators[token_key] then
 				update_generator_visual(self, generator_id, token_key, token)
 			end
 		end
@@ -743,36 +745,49 @@ end
 function update_generator_visual(self, generator_id, token_key, token)
 	local is_reloading = is_generator_reloading(self, token_key)
 	local reload_progress = get_generator_reload_progress(self, token_key)
+	local is_auto_reloading = token.is_auto_reloading
+	local auto_reload_progress = get_generator_auto_reload_progress(self, token_key)
 	
-	-- Если генератор перетаскивается, удаляем индикатор
+	-- Если генератор перетаскивается, удаляем все индикаторы
 	if self.is_dragging and self.dragged_token == token.id then
 		remove_generator_indicator(self, token_key)
+		remove_generator_auto_indicator(self, token_key)
 		return
 	end
 	
+	-- Обрабатываем ручные генераторы
 	if is_reloading then
-		-- Генератор на перезарядке - показываем или обновляем индикатор
+		-- Ручный генератор на перезарядке - показываем или обновляем индикатор
 		if self.generator_indicators[token_key] then
 			-- Индикатор уже существует - обновляем прогресс
 			self.generator_indicators[token_key]:set_progress(reload_progress)
 		else
-			-- Создаём новый индикатор
-			show_generator_indicator(self, generator_id, token_key, token, reload_progress)
+			-- Создаём новый индикатор для ручного генератора
+			show_generator_indicator(self, generator_id, token_key, token, reload_progress, "manual")
 		end
 	else
-		-- Генератор готов - удаляем индикатор
+		-- Ручный генератор готов - удаляем индикатор
 		remove_generator_indicator(self, token_key)
+	end
+	
+	-- Обрабатываем автоматические генераторы
+	if is_auto_reloading then
+		-- Автоматический генератор на перезарядке - показываем или обновляем индикатор
+		if self.generator_auto_indicators[token_key] then
+			-- Индикатор уже существует - обновляем прогресс
+			self.generator_auto_indicators[token_key]:set_progress(auto_reload_progress)
+		else
+			-- Создаём новый индикатор для автоматического генератора
+			show_generator_indicator(self, generator_id, token_key, token, auto_reload_progress, "automatic")
+		end
+	else
+		-- Автоматический генератор готов - удаляем индикатор
+		remove_generator_auto_indicator(self, token_key)
 	end
 end
 
 -- Функция показа индикатора перезарядки генератора
-function show_generator_indicator(self, generator_id, token_key, token, progress)
-	-- Если индикатор уже существует, обновляем его прогресс
-	if self.generator_indicators[token_key] then
-		self.generator_indicators[token_key]:set_progress(progress)
-		return
-	end
-	
+function show_generator_indicator(self, generator_id, token_key, token, progress, type)
 	-- Извлекаем координаты из ключа токена
 	local grid_x, grid_y = utils.parse_token_key(token_key)
 	if not grid_x or not grid_y then
@@ -783,24 +798,58 @@ function show_generator_indicator(self, generator_id, token_key, token, progress
 	-- Создаем новый индикатор
 	local token_pos = grid_to_screen(grid_x, grid_y)
 	token_pos.z = 0
-	-- Размещаем индикатор в правом верхнем углу тайла, уменьшенный в 4 раза
-	local indicator_pos = vmath.vector3(
-		token_pos.x + CELL_SIZE * 0.25,  -- Смещение вправо
-		token_pos.y + CELL_SIZE * 0.25,  -- Смещение вверх
-		0.6 -- фиксированное значение, чтобы все части индикатора были видимы
-	)
-	local indicator_scale = vmath.vector3(0.25, 0.25, 1) -- Уменьшен в 4 раза
+	local indicator_pos, indicator_scale, indicator_color
 	
-	print("DEBUG: token_pos for indicator = " .. tostring(token_pos))
-	print("DEBUG: indicator_pos for indicator = " .. tostring(indicator_pos))
-	print("DEBUG: SHOW_INDICATOR: token_pos = (" .. tostring(token_pos.x) .. ", " .. tostring(token_pos.y) .. ", " .. tostring(token_pos.z) .. ") indicator_pos = (" .. tostring(indicator_pos.x) .. ", " .. tostring(indicator_pos.y) .. ", " .. tostring(indicator_pos.z) .. ") for key " .. tostring(token_key))
-	
-	local indicator = Indicator:new(indicator_pos, indicator_scale)
-	indicator:set_color(vmath.vector4(0.2, 0.6, 1.0, 1)) -- Синий цвет
-	indicator:set_progress(progress)
-	
-	self.generator_indicators[token_key] = indicator
-	debug_logger.log_important("Created reload indicator for generator " .. generator_id .. " at " .. token_key, 5.0)
+	if type == "manual" then
+		-- Ручные генераторы: синий цвет, правый верхний угол
+		indicator_pos = vmath.vector3(
+			token_pos.x + CELL_SIZE * 0.25,  -- Смещение вправо
+			token_pos.y + CELL_SIZE * 0.25,  -- Смещение вверх
+			0.6 -- фиксированное значение, чтобы все части индикатора были видимы
+		)
+		indicator_scale = vmath.vector3(0.25, 0.25, 1) -- Уменьшен в 4 раза
+		indicator_color = vmath.vector4(0.2, 0.6, 1.0, 1) -- Синий цвет
+		
+		-- Если индикатор уже существует, обновляем его прогресс
+		if self.generator_indicators[token_key] then
+			self.generator_indicators[token_key]:set_progress(progress)
+			return
+		end
+		
+		print("DEBUG: SHOW_MANUAL_INDICATOR: token_pos = (" .. tostring(token_pos.x) .. ", " .. tostring(token_pos.y) .. ", " .. tostring(token_pos.z) .. ") indicator_pos = (" .. tostring(indicator_pos.x) .. ", " .. tostring(indicator_pos.y) .. ", " .. tostring(indicator_pos.z) .. ") for key " .. tostring(token_key))
+		
+		local indicator = Indicator:new(indicator_pos, indicator_scale)
+		indicator:set_color(indicator_color)
+		indicator:set_progress(progress)
+		
+		self.generator_indicators[token_key] = indicator
+		debug_logger.log_important("Created manual reload indicator for generator " .. generator_id .. " at " .. token_key, 5.0)
+		
+	elseif type == "automatic" then
+		-- Автоматические генераторы: зеленый цвет, левый верхний угол
+		indicator_pos = vmath.vector3(
+			token_pos.x - CELL_SIZE * 0.25,  -- Смещение влево
+			token_pos.y + CELL_SIZE * 0.25,  -- Смещение вверх
+			0.6 -- фиксированное значение, чтобы все части индикатора были видимы
+		)
+		indicator_scale = vmath.vector3(0.25, 0.25, 1) -- Уменьшен в 4 раза
+		indicator_color = vmath.vector4(0.2, 1.0, 0.2, 1) -- Зеленый цвет
+		
+		-- Если индикатор уже существует, обновляем его прогресс
+		if self.generator_auto_indicators[token_key] then
+			self.generator_auto_indicators[token_key]:set_progress(progress)
+			return
+		end
+		
+		print("DEBUG: SHOW_AUTO_INDICATOR: token_pos = (" .. tostring(token_pos.x) .. ", " .. tostring(token_pos.y) .. ", " .. tostring(token_pos.z) .. ") indicator_pos = (" .. tostring(indicator_pos.x) .. ", " .. tostring(indicator_pos.y) .. ", " .. tostring(indicator_pos.z) .. ") for key " .. tostring(token_key))
+		
+		local indicator = Indicator:new(indicator_pos, indicator_scale)
+		indicator:set_color(indicator_color)
+		indicator:set_progress(progress)
+		
+		self.generator_auto_indicators[token_key] = indicator
+		debug_logger.log_important("Created automatic reload indicator for generator " .. generator_id .. " at " .. token_key, 5.0)
+	end
 end
 
 -- Функция удаления индикатора перезарядки генератора
@@ -808,10 +857,23 @@ function remove_generator_indicator(self, token_key)
 	if self.generator_indicators[token_key] then
 		self.generator_indicators[token_key]:destroy()
 		self.generator_indicators[token_key] = nil
-		debug_logger.log_important("Removed reload indicator for generator at " .. token_key, 5.0)
+		debug_logger.log_important("Removed manual reload indicator for generator at " .. token_key, 5.0)
 		if self.tokens and self.tokens[token_key] and self.tokens[token_key].id then
 			local pos = go.get_position(self.tokens[token_key].id)
-			print("DEBUG: REMOVE_INDICATOR: token_pos = (" .. tostring(pos.x) .. ", " .. tostring(pos.y) .. ", " .. tostring(pos.z) .. ") for key " .. tostring(token_key))
+			print("DEBUG: REMOVE_MANUAL_INDICATOR: token_pos = (" .. tostring(pos.x) .. ", " .. tostring(pos.y) .. ", " .. tostring(pos.z) .. ") for key " .. tostring(token_key))
+		end
+	end
+end
+
+-- Функция удаления индикатора перезарядки автоматического генератора
+function remove_generator_auto_indicator(self, token_key)
+	if self.generator_auto_indicators[token_key] then
+		self.generator_auto_indicators[token_key]:destroy()
+		self.generator_auto_indicators[token_key] = nil
+		debug_logger.log_important("Removed automatic reload indicator for generator at " .. token_key, 5.0)
+		if self.tokens and self.tokens[token_key] and self.tokens[token_key].id then
+			local pos = go.get_position(self.tokens[token_key].id)
+			print("DEBUG: REMOVE_AUTO_INDICATOR: token_pos = (" .. tostring(pos.x) .. ", " .. tostring(pos.y) .. ", " .. tostring(pos.z) .. ") for key " .. tostring(token_key))
 		end
 	end
 end
@@ -915,6 +977,13 @@ function get_generator_reload_progress(self, token_key)
         local elapsed = os.clock() - token.reload_start_time
         return math.min(elapsed / total, 1.0)
     end
+    
+    return 1.0
+end
+
+function get_generator_auto_reload_progress(self, token_key)
+    local token = self.tokens[token_key]
+    if not token then return 1.0 end
     
     -- Проверяем автоматические генераторы
     if token.is_auto_reloading then
@@ -1387,7 +1456,16 @@ function final(self)
 		end
 	end
 	self.generator_indicators = {}
-	print("BOARD: All generator indicators cleaned up")
+	print("BOARD: All manual generator indicators cleaned up")
+	
+	-- Очищаем все индикаторы автоматических генераторов
+	for token_key, indicator in pairs(self.generator_auto_indicators) do
+		if indicator then
+			indicator:destroy()
+		end
+	end
+	self.generator_auto_indicators = {}
+	print("BOARD: All automatic generator indicators cleaned up")
 	
 	-- Очищаем все иконки генераторов
 	for token_key, icon_id in pairs(self.generator_icons) do
