@@ -33,5 +33,9 @@ function on_message(self, message_id, message, sender)
 			-- Снимаем выделение - возвращаем нормальный цвет
 			go.set("#sprite", "tint", vmath.vector4(1.0, 1.0, 1.0, 1.0))
 		end
+	elseif message_id == hash("set_tile") then
+		-- Устанавливаем тайл для ячейки
+		print("CELL: Setting tile " .. message.tile_name .. " for grid(" .. self.grid_x .. ", " .. self.grid_y .. ")")
+		sprite.play_flipbook("#sprite", message.tile_name)
 	end
 end

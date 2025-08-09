@@ -199,6 +199,12 @@ function init(self)
 		)
 			local id = factory.create("#cell_factory", pos, nil, { grid_x = x, grid_y = y }, 1)
 			self.cells[x][y] = { id = id }
+			
+			-- Устанавливаем случайный тайл для ячейки в шахматном порядке
+			local is_light = (x + y) % 2 == 0
+			local tile_variant = math.random(1, 4)
+			local tile_name = is_light and ("light_tile_" .. tile_variant) or ("dark_tile_" .. tile_variant)
+			msg.post(id, "set_tile", { tile_name = tile_name })
 		end
 	end
 	
