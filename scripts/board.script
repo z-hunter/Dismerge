@@ -980,7 +980,10 @@ function drop_token_from_generator(self, token_string, generator_cell)
 		
 		print("BOARD: Drop from generator " .. source_generator_id .. " at (" .. generator_cell.x .. ", " .. generator_cell.y .. ")")
 		
-		if source_generator and source_generator.automatic and source_generator.automatic.capacity and source_generator.automatic.capacity > 0 then
+		-- Проверяем, является ли генератор автоматическим (имеет автоматическую конфигурацию с емкостью и таймером)
+		if source_generator and source_generator.automatic and 
+		   source_generator.automatic.capacity and source_generator.automatic.capacity > 0 and
+		   source_generator.automatic.timer_sec and source_generator.automatic.timer_sec > 0 then
 			-- Автоматические генераторы используют ближний дроп
 			print("BOARD: Using nearest drop for automatic generator")
 			local adjacent_cells = find_adjacent_empty_cells(self, generator_cell.x, generator_cell.y)
@@ -991,9 +994,9 @@ function drop_token_from_generator(self, token_string, generator_cell)
 				target_cell = adjacent_cells[math.random(1, #adjacent_cells)]
 				print("BOARD: Selected adjacent cell (" .. target_cell.x .. ", " .. target_cell.y .. ")")
 			else
-				-- Если соседних клеток нет, ищем ближайшую свободную клетку
-				print("BOARD: No adjacent cells, using nearest empty cell")
-				target_cell = find_nearest_empty_cell(self, generator_cell.x, generator_cell.y)
+				-- Если соседних клеток нет, автоматический генератор не дропает фишку
+				print("BOARD: No adjacent cells available for automatic generator - skipping drop")
+				return
 			end
 		else
 			-- Ручные генераторы используют обычный дроп (любая свободная клетка)
