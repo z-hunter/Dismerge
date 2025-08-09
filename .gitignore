@@ -23,3 +23,6 @@ Thumbs.db
 /.editor_settings
 /.internal
 /build
+
+# Documentation
+defold_doc/

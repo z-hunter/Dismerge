@@ -2,22 +2,6 @@
   :workflow {
     :recent-files [
       [
-        "/scripts/ui.script"
-        :code
-      ]
-      [
-        "/assets/iosevka.font"
-        :scene
-      ]
-      [
-        "/main/ui.go"
-        :scene
-      ]
-      [
-        "/config/evo.csv"
-        :code
-      ]
-      [
         "/config/init.csv"
         :code
       ]
@@ -102,23 +86,11 @@
         :code
       ]
       [
-        "/main/main.collection"
-        :scene
-      ]
-      [
-        "/modules/progress_indicator/progress_indicator.collection"
-        :scene
-      ]
-      [
         "/game.project"
         :cljfx-form-view
       ]
       [
         "/assets/tile.atlas"
-        :scene
-      ]
-      [
-        "/main/cell.go"
         :scene
       ]
       [
@@ -128,6 +100,34 @@
       [
         "/main/generator_icon.go"
         :scene
+      ]
+      [
+        "/main/main.collection"
+        :scene
+      ]
+      [
+        "/main/board_factorys.go"
+        :scene
+      ]
+      [
+        "/main/cell.go"
+        :scene
+      ]
+      [
+        "/main/cell_factory.factory"
+        :cljfx-form-view
+      ]
+      [
+        "/modules/progress_indicator/indicator_factory.collectionfactory"
+        :cljfx-form-view
+      ]
+      [
+        "/modules/progress_indicator/progress_indicator.collection"
+        :scene
+      ]
+      [
+        "/modules/progress_indicator/progress_indicator.script"
+        :code
       ]
     ]
   }
