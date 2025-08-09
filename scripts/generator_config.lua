@@ -82,7 +82,13 @@ function M.load_generator_config()
                         timer_sec = csv_parser.get_field_value(record, "A:Timer(sec)", "number"),
                         reload_sec = csv_parser.get_field_value(record, "A:Reload(sec)", "number"),
                         outputs = {},
-                        rates = {}
+                        rates = {},
+                        current_capacity = csv_parser.get_field_value(record, "A:Capacity", "number"), -- Инициализируем текущую емкость
+                        is_reloading = false,
+                        reload_start_time = 0, -- Время начала перезарядки
+                        reload_end_time = 0,    -- Время окончания перезарядки
+                        used_activations = 0, -- Счетчик использованных активаций
+                        completed_cycles = 0 -- Счетчик завершенных циклов
                     }
                 }
             else
@@ -186,6 +192,54 @@ function M.get_random_manual_output(generator_id)
     
     -- На всякий случай возвращаем последнюю фишку
     return generator.manual.outputs[#generator.manual.outputs], nil
+end
+
+-- Функция для получения случайной фишки из генератора по вероятностям (автоматическая активация)
+function M.get_random_automatic_output(generator_id)
+    local generator = generators[generator_id]
+    if not generator then
+        return nil, "Generator not found"
+    end
+    
+    -- Проверяем, есть ли автоматическая генерация
+    if not generator.automatic or not generator.automatic.capacity or #generator.automatic.outputs == 0 then
+        return nil, "No automatic generation configured"
+    end
+    
+    -- Проверяем, не на перезарядке ли генератор
+    if generator.automatic.is_reloading then
+        return nil, "Generator is reloading"
+    end
+    
+    -- Проверяем емкость
+    if generator.automatic.current_capacity and generator.automatic.current_capacity <= 0 then
+        return nil, "Generator capacity exhausted"
+    end
+    
+    -- Вычисляем общую сумму вероятностей
+    local total_rate = 0
+    for _, rate in ipairs(generator.automatic.rates) do
+        total_rate = total_rate + rate
+    end
+    
+    if total_rate <= 0 then
+        return nil, "No valid rates found"
+    end
+    
+    -- Генерируем случайное число от 1 до total_rate
+    local random_value = math.random(1, total_rate)
+    
+    -- Определяем, какая фишка выпала
+    local current_sum = 0
+    for i, rate in ipairs(generator.automatic.rates) do
+        current_sum = current_sum + rate
+        if random_value <= current_sum then
+            return generator.automatic.outputs[i], nil
+        end
+    end
+    
+    -- На всякий случай возвращаем последнюю фишку
+    return generator.automatic.outputs[#generator.automatic.outputs], nil
 end
 
 -- Функция для валидации конфигурации генераторов

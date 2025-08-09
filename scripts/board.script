@@ -328,11 +328,83 @@ function update(self, dt)
 		end
 	end
 	
+	-- Обработка автоматических генераторов
+	update_automatic_generators(self, dt)
+	
 	-- Обновление визуала генераторов (индикаторы перезарядки)
 	update_generators_visual(self)
 	
 	-- Обновление анимации иконок генераторов
 	update_icon_animations(self, dt)
+end
+
+-- Функция обновления автоматических генераторов
+function update_automatic_generators(self, dt)
+	for token_key, token in pairs(self.tokens) do
+		local generator_id = utils.create_token_string(token.evo_id, token.level)
+		local generator = generator_config.get_generator(generator_id)
+		
+		if generator and generator.automatic then
+			-- Проверяем, не перетаскивается ли генератор
+			if not (self.is_dragging and self.dragged_token == token.id) then
+				-- Инициализируем таймеры если их нет
+				if not token.auto_timer then
+					token.auto_timer = 0
+				end
+				if not token.auto_reload_timer then
+					token.auto_reload_timer = 0
+				end
+				if not token.is_auto_reloading then
+					token.is_auto_reloading = false
+				end
+				if not token.auto_capacity then
+					token.auto_capacity = generator.automatic.capacity or 0
+				end
+				
+				if token.is_auto_reloading then
+					-- Генератор на перезарядке
+					token.auto_reload_timer = token.auto_reload_timer + dt
+					if token.auto_reload_timer >= (generator.automatic.reload_sec or 0) then
+						-- Перезарядка завершена
+						token.is_auto_reloading = false
+						token.auto_reload_timer = 0
+						token.auto_capacity = generator.automatic.capacity or 0
+						print("BOARD: Automatic generator " .. generator_id .. " finished reloading")
+					end
+				else
+					-- Генератор готов к работе
+					token.auto_timer = token.auto_timer + dt
+					if token.auto_timer >= (generator.automatic.timer_sec or 0) then
+						-- Время для генерации
+						if token.auto_capacity and token.auto_capacity > 0 then
+							-- Генерируем фишку
+							local output_token, error_msg = generator_config.get_random_automatic_output(generator_id)
+							if output_token then
+								local grid_x, grid_y = utils.parse_token_key(token_key)
+								if grid_x and grid_y then
+									print("BOARD: Automatic generator " .. generator_id .. " generated: " .. output_token)
+									drop_token_from_generator(self, output_token, { x = grid_x, y = grid_y })
+									
+									-- Уменьшаем емкость
+									token.auto_capacity = token.auto_capacity - 1
+									
+									-- Если емкость закончилась, запускаем перезарядку
+									if token.auto_capacity <= 0 and generator.automatic.reload_sec then
+										token.is_auto_reloading = true
+										token.auto_reload_timer = 0
+										print("BOARD: Automatic generator " .. generator_id .. " started reloading")
+									end
+								end
+							else
+								print("BOARD: Automatic generator " .. generator_id .. " failed to generate: " .. (error_msg or "unknown error"))
+							end
+						end
+						token.auto_timer = 0
+					end
+				end
+			end
+		end
+	end
 end
 
 -- Функция обновления анимации иконок генераторов
@@ -854,8 +926,18 @@ function drop_token_from_generator(self, token_string, generator_cell)
 		return
 	end
 	
-	-- Ищем свободную клетку (обычный дроп - любая свободная клетка)
-	local target_cell = find_nearest_empty_cell(self, generator_cell.x, generator_cell.y)
+	-- Ищем соседние свободные клетки (ближний дроп)
+	local adjacent_cells = find_adjacent_empty_cells(self, generator_cell.x, generator_cell.y)
+	local target_cell = nil
+	
+	if #adjacent_cells > 0 then
+		-- Выбираем случайную соседнюю клетку
+		target_cell = adjacent_cells[math.random(1, #adjacent_cells)]
+	else
+		-- Если соседних клеток нет, ищем ближайшую свободную клетку
+		target_cell = find_nearest_empty_cell(self, generator_cell.x, generator_cell.y)
+	end
+	
 	if not target_cell then
 		print("BOARD: No empty cells available for drop")
 		return
@@ -1189,20 +1271,32 @@ function initialize_generators(self)
 		
 		if generator_config.is_generator(generator_id) then
 			local generator = generator_config.get_generator(generator_id)
-			if generator and generator.manual then
-				-- Инициализируем генератор с полной емкостью
-				token.current_capacity = generator.manual.capacity
-				token.is_reloading = false
-				
-				-- Инициализируем счетчик циклов для одноразовых генераторов
-				if generator_config.is_disposable(generator_id) then
-					if not generator.manual.completed_cycles then
-						generator.manual.completed_cycles = 0
+			if generator then
+				-- Инициализируем ручные генераторы
+				if generator.manual then
+					-- Инициализируем генератор с полной емкостью
+					token.current_capacity = generator.manual.capacity or 0
+					token.is_reloading = false
+					
+					-- Инициализируем счетчик циклов для одноразовых генераторов
+					if generator_config.is_disposable(generator_id) then
+						if not generator.manual.completed_cycles then
+							generator.manual.completed_cycles = 0
+						end
+						local remaining = generator_config.get_remaining_cycles(generator_id)
+						print("BOARD: Initialized disposable generator " .. generator_id .. " with capacity " .. (generator.manual.capacity or 0) .. " and " .. (remaining or 0) .. " remaining cycles")
+					else
+						print("BOARD: Initialized manual generator " .. generator_id .. " with capacity " .. (generator.manual.capacity or 0))
 					end
-					local remaining = generator_config.get_remaining_cycles(generator_id)
-					print("BOARD: Initialized disposable generator " .. generator_id .. " with capacity " .. generator.manual.capacity .. " and " .. remaining .. " remaining cycles")
-				else
-					print("BOARD: Initialized generator " .. generator_id .. " with capacity " .. generator.manual.capacity)
+				end
+				
+				-- Инициализируем автоматические генераторы
+				if generator.automatic then
+					token.auto_capacity = generator.automatic.capacity or 0
+					token.auto_timer = 0
+					token.auto_reload_timer = 0
+					token.is_auto_reloading = false
+					print("BOARD: Initialized automatic generator " .. generator_id .. " with capacity " .. (generator.automatic.capacity or 0))
 				end
 			end
 		end
