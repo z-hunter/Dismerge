@@ -855,6 +855,8 @@ end
 function is_generator_reloading(self, token_key)
     local token = self.tokens[token_key]
     if not token then return false end
+    
+    -- Проверяем ручные генераторы
     if token.is_reloading then
         if os.clock() >= token.reload_end_time then
             token.is_reloading = false
@@ -874,18 +876,51 @@ function is_generator_reloading(self, token_key)
             -- Обновляем иконки генераторов после завершения перезарядки
             update_generator_icons(self)
         end
+        return true
     end
-    return token.is_reloading
+    
+    -- Проверяем автоматические генераторы
+    if token.is_auto_reloading then
+        if token.auto_reload_timer and token.auto_reload_timer >= (generator_config.get_generator(utils.create_token_string(token.evo_id, token.level)) and generator_config.get_generator(utils.create_token_string(token.evo_id, token.level)).automatic and generator_config.get_generator(utils.create_token_string(token.evo_id, token.level)).automatic.reload_sec or 0) then
+            token.is_auto_reloading = false
+            token.auto_reload_timer = 0
+            local generator = generator_config.get_generator(utils.create_token_string(token.evo_id, token.level))
+            if generator and generator.automatic then
+                token.auto_capacity = generator.automatic.capacity or 0
+            end
+            update_generator_icons(self)
+        else
+            return true
+        end
+    end
+    
+    return false
 end
 
 function get_generator_reload_progress(self, token_key)
     local token = self.tokens[token_key]
-    if not token or not token.is_reloading then return 1.0 end
-    local generator = generator_config.get_generator(utils.create_token_string(token.evo_id, token.level))
-    if not generator or not generator.manual then return 1.0 end
-    local total = generator.manual.reload_sec
-    local elapsed = os.clock() - token.reload_start_time
-    return math.min(elapsed / total, 1.0)
+    if not token then return 1.0 end
+    
+    -- Проверяем ручные генераторы
+    if token.is_reloading then
+        local generator = generator_config.get_generator(utils.create_token_string(token.evo_id, token.level))
+        if not generator or not generator.manual then return 1.0 end
+        local total = generator.manual.reload_sec
+        local elapsed = os.clock() - token.reload_start_time
+        return math.min(elapsed / total, 1.0)
+    end
+    
+    -- Проверяем автоматические генераторы
+    if token.is_auto_reloading then
+        local generator = generator_config.get_generator(utils.create_token_string(token.evo_id, token.level))
+        if not generator or not generator.automatic then return 1.0 end
+        local total = generator.automatic.reload_sec or 0
+        if total <= 0 then return 1.0 end
+        local elapsed = token.auto_reload_timer or 0
+        return math.min(elapsed / total, 1.0)
+    end
+    
+    return 1.0
 end
 
 -- Функция активации генератора
@@ -926,15 +961,33 @@ function drop_token_from_generator(self, token_string, generator_cell)
 		return
 	end
 	
-	-- Ищем соседние свободные клетки (ближний дроп)
-	local adjacent_cells = find_adjacent_empty_cells(self, generator_cell.x, generator_cell.y)
+	-- Определяем тип исходного генератора для выбора стратегии дропа
 	local target_cell = nil
 	
-	if #adjacent_cells > 0 then
-		-- Выбираем случайную соседнюю клетку
-		target_cell = adjacent_cells[math.random(1, #adjacent_cells)]
+	-- Проверяем, есть ли генератор в исходной клетке
+	local generator_key = utils.get_token_key(generator_cell.x, generator_cell.y)
+	local source_token = self.tokens[generator_key]
+	
+	if source_token then
+		local source_generator_id = utils.create_token_string(source_token.evo_id, source_token.level)
+		local source_generator = generator_config.get_generator(source_generator_id)
+		
+		if source_generator and source_generator.automatic then
+			-- Автоматические генераторы используют ближний дроп
+			local adjacent_cells = find_adjacent_empty_cells(self, generator_cell.x, generator_cell.y)
+			if #adjacent_cells > 0 then
+				-- Выбираем случайную соседнюю клетку
+				target_cell = adjacent_cells[math.random(1, #adjacent_cells)]
+			else
+				-- Если соседних клеток нет, ищем ближайшую свободную клетку
+				target_cell = find_nearest_empty_cell(self, generator_cell.x, generator_cell.y)
+			end
+		else
+			-- Ручные генераторы используют обычный дроп (любая свободная клетка)
+			target_cell = find_nearest_empty_cell(self, generator_cell.x, generator_cell.y)
+		end
 	else
-		-- Если соседних клеток нет, ищем ближайшую свободную клетку
+		-- Если генератор не найден, используем обычный дроп
 		target_cell = find_nearest_empty_cell(self, generator_cell.x, generator_cell.y)
 	end
 	
