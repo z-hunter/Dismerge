@@ -978,22 +978,31 @@ function drop_token_from_generator(self, token_string, generator_cell)
 		local source_generator_id = utils.create_token_string(source_token.evo_id, source_token.level)
 		local source_generator = generator_config.get_generator(source_generator_id)
 		
-		if source_generator and source_generator.automatic then
+		print("BOARD: Drop from generator " .. source_generator_id .. " at (" .. generator_cell.x .. ", " .. generator_cell.y .. ")")
+		
+		if source_generator and source_generator.automatic and source_generator.automatic.capacity and source_generator.automatic.capacity > 0 then
 			-- Автоматические генераторы используют ближний дроп
+			print("BOARD: Using nearest drop for automatic generator")
 			local adjacent_cells = find_adjacent_empty_cells(self, generator_cell.x, generator_cell.y)
+			print("BOARD: Found " .. #adjacent_cells .. " adjacent empty cells")
+			
 			if #adjacent_cells > 0 then
 				-- Выбираем случайную соседнюю клетку
 				target_cell = adjacent_cells[math.random(1, #adjacent_cells)]
+				print("BOARD: Selected adjacent cell (" .. target_cell.x .. ", " .. target_cell.y .. ")")
 			else
 				-- Если соседних клеток нет, ищем ближайшую свободную клетку
+				print("BOARD: No adjacent cells, using nearest empty cell")
 				target_cell = find_nearest_empty_cell(self, generator_cell.x, generator_cell.y)
 			end
 		else
 			-- Ручные генераторы используют обычный дроп (любая свободная клетка)
+			print("BOARD: Using normal drop for manual generator")
 			target_cell = find_nearest_empty_cell(self, generator_cell.x, generator_cell.y)
 		end
 	else
 		-- Если генератор не найден, используем обычный дроп
+		print("BOARD: Generator not found, using normal drop")
 		target_cell = find_nearest_empty_cell(self, generator_cell.x, generator_cell.y)
 	end
 	
