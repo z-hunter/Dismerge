@@ -1,0 +1,28 @@
+images {
+  image: "/assets/evo/GEN_P-1.png"
+}
+images {
+  image: "/assets/evo/GEN_P-2.png"
+}
+images {
+  image: "/assets/evo/GEN_P-3.png"
+}
+images {
+  image: "/assets/evo/GEN_P-4.png"
+}
+images {
+  image: "/assets/evo/GEN_P-5.png"
+}
+images {
+  image: "/assets/evo/GEN_P-6.png"
+}
+images {
+  image: "/assets/evo/GEN_P-7.png"
+}
+images {
+  image: "/assets/evo/GEN_P-8.png"
+}
+images {
+  image: "/assets/evo/GEN_P-9.png"
+}
+extrude_borders: 2
