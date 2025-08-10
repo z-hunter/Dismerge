@@ -106,6 +106,41 @@ local function find_adjacent_empty_cells(self, source_x, source_y)
 	return adjacent_cells
 end
 
+-- 🎨 Проверить наличие атласа и спрайта для цепочки
+local function check_sprite_availability(evo_id, level)
+	local atlas_path = "assets/evo/" .. evo_id .. ".atlas"
+	local sprite_name = evo_id .. "-" .. tostring(level)
+	
+	-- Проверяем существование файла атласа
+	local atlas_exists = io.open(atlas_path, "r") ~= nil
+	
+	if atlas_exists then
+		print("BOARD: ✅ Атлас найден для цепочки " .. evo_id .. ": " .. atlas_path)
+		
+		-- Проверяем, есть ли в атласе нужный спрайт
+		-- Для этого читаем содержимое атласа и ищем нужное изображение
+		local atlas_file = io.open(atlas_path, "r")
+		if atlas_file then
+			local content = atlas_file:read("*all")
+			atlas_file:close()
+			
+			-- Ищем изображение с нужным именем
+			local image_pattern = "image: \"/assets/evo/" .. sprite_name .. ".png\""
+			local sprite_exists = string.find(content, image_pattern, 1, true)
+			
+			if sprite_exists then
+				print("BOARD: ✅ Спрайт найден: " .. sprite_name .. " в атласе " .. evo_id)
+			else
+				print("BOARD: ❌ Спрайт НЕ найден: " .. sprite_name .. " в атласе " .. evo_id)
+			end
+		end
+	else
+		print("BOARD: ❌ Атлас НЕ найден для цепочки " .. evo_id .. ": " .. atlas_path)
+	end
+	
+	return atlas_exists
+end
+
 function init(self)
 	msg.post(".", "acquire_input_focus")
 	
@@ -246,10 +281,14 @@ function init(self)
 end
 
 function create_token_on_board(self, evo_id, level, grid_x, grid_y, initial_z)
-    local pos = grid_to_screen(grid_x, grid_y)
-    pos.z = initial_z or 0
-    local properties = { level = level, grid_x = grid_x, grid_y = grid_y }
-    local token_id = factory.create("#token_factory", pos, nil, properties, 1)
+	local pos = grid_to_screen(grid_x, grid_y)
+	pos.z = initial_z or 0
+	local properties = { level = level, grid_x = grid_x, grid_y = grid_y }
+	
+	-- 🎨 Проверяем наличие атласа и спрайта для этой фишки
+	check_sprite_availability(evo_id, level)
+	
+	local token_id = factory.create("#token_factory", pos, nil, properties, 1)
     
     -- Проверяем, что токен был создан успешно
     if not token_id then

@@ -2,18 +2,6 @@
   :workflow {
     :recent-files [
       [
-        "/config/init.csv"
-        :code
-      ]
-      [
-        "/config/gen.csv"
-        :code
-      ]
-      [
-        "/scripts/board.script"
-        :code
-      ]
-      [
         "/test/test_indicator.collection"
         :scene
       ]
@@ -90,10 +78,6 @@
         :cljfx-form-view
       ]
       [
-        "/assets/tile.atlas"
-        :scene
-      ]
-      [
         "/main/token.go"
         :scene
       ]
@@ -110,14 +94,6 @@
         :scene
       ]
       [
-        "/main/cell.go"
-        :scene
-      ]
-      [
-        "/main/cell_factory.factory"
-        :cljfx-form-view
-      ]
-      [
         "/modules/progress_indicator/indicator_factory.collectionfactory"
         :cljfx-form-view
       ]
@@ -127,6 +103,30 @@
       ]
       [
         "/modules/progress_indicator/progress_indicator.script"
+        :code
+      ]
+      [
+        "/main/cell.go"
+        :scene
+      ]
+      [
+        "/main/cell_factory.factory"
+        :cljfx-form-view
+      ]
+      [
+        "/history.md"
+        :html
+      ]
+      [
+        "/assets/tile.atlas"
+        :scene
+      ]
+      [
+        "/assets/GEN_P.atlas"
+        :scene
+      ]
+      [
+        "/scripts/board.script"
         :code
       ]
     ]
