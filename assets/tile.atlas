@@ -2,13 +2,34 @@ images {
   image: "/assets/tile.png"
 }
 images {
-  image: "/assets/token.png"
-}
-images {
   image: "/assets/half-circle.png"
 }
 images {
   image: "/assets/energy_icon.png"
+}
+images {
+  image: "/assets/dark_tile_1.png"
+}
+images {
+  image: "/assets/dark_tile_2.png"
+}
+images {
+  image: "/assets/dark_tile_3.png"
+}
+images {
+  image: "/assets/dark_tile_4.png"
+}
+images {
+  image: "/assets/light_tile_1.png"
+}
+images {
+  image: "/assets/light_tile_2.png"
+}
+images {
+  image: "/assets/light_tile_3.png"
+}
+images {
+  image: "/assets/light_tile_4.png"
 }
 margin: 1
 extrude_borders: 2

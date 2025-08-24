@@ -10,6 +10,12 @@ local move_speed = 2500  -- пикселей в секунду
 
 -- Функция для обновления визуального отображения уровня
 local function update_level_visual(self)
+	-- Проверяем, есть ли у фишки уникальный спрайт
+	if self.has_custom_sprite then
+		-- У фишки есть уникальный спрайт - не показываем label уровня
+		return
+	end
+	
 	-- Устанавливаем текст
 	local text = tostring(self.level)
 	label.set_text("#label", text)
@@ -68,7 +74,11 @@ function on_message(self, message_id, message, sender)
 		self.is_dragging = true
 		-- Визуальные эффекты для перетаскивания
 		go.set_scale(vmath.vector3(1.2, 1.2, 1.0), ".")
-		go.set("#label", "color", vmath.vector4(1, 1, 1, 0.8))
+		
+		-- Изменяем label только для обычных фишек (без уникальных спрайтов)
+		if not self.has_custom_sprite then
+			go.set("#label", "color", vmath.vector4(1, 1, 1, 0.8))
+		end
 
 		
 	elseif message_id == hash("stop_drag") then
@@ -77,7 +87,15 @@ function on_message(self, message_id, message, sender)
 		self.is_dragging = false
 		-- Возвращаем нормальный размер и цвет
 		go.set_scale(vmath.vector3(1.0, 1.0, 1.0), ".")
-		update_level_visual(self)
+		
+		-- Обновляем визуал в зависимости от типа фишки
+		if self.has_custom_sprite then
+			-- У фишки есть уникальный спрайт - label остается пустым
+			label.set_text("#label", " ")
+		else
+			-- Обычная фишка - показываем label уровня
+			update_level_visual(self)
+		end
 		
 	elseif message_id == hash("set_position") then
 		-- НОВАЯ СИСТЕМА: Принудительная установка позиции (для следования за курсором)
@@ -102,17 +120,50 @@ function on_message(self, message_id, message, sender)
 	elseif message_id == hash("update_level") then
 		-- Обновляем уровень и визуал
 		self.level = message.level
-		update_level_visual(self)
+		
+		-- Обновляем визуал только если у фишки нет уникального спрайта
+		if not self.has_custom_sprite then
+			update_level_visual(self)
+		end
 		
 	elseif message_id == hash("update_evo_id") then
 		-- Обновляем ID эволюционной цепочки и визуал
 		self.evo_id = message.evo_id
-		update_level_visual(self)
+		
+		-- Обновляем визуал только если у фишки нет уникального спрайта
+		if not self.has_custom_sprite then
+			update_level_visual(self)
+		end
+		
+	elseif message_id == hash("set_sprite") then
+		-- 🎨 Устанавливаем специальный спрайт для фишки
+		if message.atlas_id and message.sprite_name then
+			print("TOKEN: Setting sprite " .. message.sprite_name .. " from atlas " .. message.atlas_id)
+			
+			-- Просто переключаем анимацию спрайта на нужный спрайт из атласа
+			-- Это работает, потому что все спрайты уже находятся в атласе evo.atlas
+			sprite.play_flipbook("#sprite", message.sprite_name)
+			
+			-- 🎯 Скрываем label уровня, так как он виден по картинке
+			-- Заменяем текст на пробел вместо изменения Z-координаты
+			label.set_text("#label", " ")
+			
+			-- Устанавливаем флаг, что у фишки есть уникальный спрайт
+			self.has_custom_sprite = true
+			
+			print("TOKEN: ✅ Sprite animation changed to " .. message.sprite_name .. " and label cleared")
+		else
+			print("TOKEN: ❌ Invalid set_sprite message - missing atlas_id or sprite_name")
+		end
 		
 	elseif message_id == hash("set_evo_id") then
 		-- Устанавливаем ID эволюционной цепочки при инициализации
 		self.evo_id = message.evo_id
-		update_level_visual(self)
+		
+		-- Обновляем визуал только если у фишки нет уникального спрайта
+		if not self.has_custom_sprite then
+			update_level_visual(self)
+		end
 		
 	elseif message_id == hash("get_token_info") then
 		-- Возвращаем информацию о фишке
