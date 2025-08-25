@@ -111,29 +111,28 @@ local function check_sprite_availability(evo_id, level)
 	local atlas_path = "assets/evo/evo.atlas"
 	local sprite_name = evo_id .. "-" .. tostring(level)
 	
-	local atlas_exists = io.open(atlas_path, "r") ~= nil
-	
-	if atlas_exists then
-		print("BOARD: ✅ Атлас evo.atlas найден: " .. atlas_path)
-		local atlas_file = io.open(atlas_path, "r")
-		if atlas_file then
-			local content = atlas_file:read("*all")
-			atlas_file:close()
-			local image_pattern = "image: \"/assets/evo/" .. sprite_name .. ".png\""
-			local sprite_exists = string.find(content, image_pattern, 1, true)
-			
-			if sprite_exists then
-				print("BOARD: ✅ Спрайт найден в evo.atlas: " .. sprite_name)
-				return true, "evo", sprite_name -- Возвращаем "evo" как ID атласа и имя спрайта
-			else
-				print("BOARD: ❌ Спрайт НЕ найден в evo.atlas: " .. sprite_name)
-			end
-		end
-	else
+	-- Открываем файл только один раз
+	local atlas_file = io.open(atlas_path, "r")
+	if not atlas_file then
 		print("BOARD: ❌ Атлас evo.atlas НЕ найден: " .. atlas_path)
+		return false, nil, nil
 	end
 	
-	return false, nil, nil -- Возвращаем false если спрайт не найден
+	-- Читаем содержимое файла
+	local content = atlas_file:read("*all")
+	atlas_file:close() -- Закрываем файл сразу после чтения
+	
+	-- Проверяем наличие спрайта
+	local image_pattern = "image: \"/assets/evo/" .. sprite_name .. ".png\""
+	local sprite_exists = string.find(content, image_pattern, 1, true)
+	
+	if sprite_exists then
+		print("BOARD: ✅ Спрайт найден в evo.atlas: " .. sprite_name)
+		return true, "evo", sprite_name -- Возвращаем "evo" как ID атласа и имя спрайта
+	else
+		print("BOARD: ❌ Спрайт НЕ найден в evo.atlas: " .. sprite_name)
+		return false, nil, nil -- Возвращаем false если спрайт не найден
+	end
 end
 
 function init(self)
@@ -386,11 +385,40 @@ function update(self, dt)
 	-- Обработка автоматических генераторов
 	update_automatic_generators(self, dt)
 	
+	-- Проверка завершения перезарядки ручных генераторов
+	check_manual_generators_reload(self)
+	
 	-- Обновление визуала генераторов (индикаторы перезарядки)
 	update_generators_visual(self)
 	
 	-- Обновление анимации иконок генераторов
 	update_icon_animations(self, dt)
+end
+
+-- Функция проверки завершения перезарядки ручных генераторов
+function check_manual_generators_reload(self)
+	for token_key, token in pairs(self.tokens) do
+		local generator_id = utils.create_token_string(token.evo_id, token.level)
+		
+		-- Проверяем, является ли фишка генератором и находится ли на перезарядке
+		if generator_config.is_generator(generator_id) and token.is_reloading then
+			local current_time = os.clock()
+			
+			-- Проверяем, завершилась ли перезарядка
+			if current_time >= token.reload_end_time then
+				-- Перезарядка завершена
+				token.is_reloading = false
+				local generator = generator_config.get_generator(generator_id)
+				if generator and generator.manual then
+					token.current_capacity = generator.manual.capacity
+					print("BOARD: Manual generator " .. generator_id .. " finished reloading, capacity restored to " .. token.current_capacity)
+				end
+				
+				-- Обновляем иконки генераторов после завершения перезарядки
+				update_generator_icons(self)
+			end
+		end
+	end
 end
 
 -- Функция обновления автоматических генераторов
@@ -781,10 +809,8 @@ function update_generators_visual(self)
 			local is_reloading = token.is_reloading -- Проверяем только ручные генераторы
 			local is_auto_reloading = token.is_auto_reloading -- Проверяем только автоматические генераторы
 			
-			-- Обновляем визуал только если генератор перезаряжается или имеет индикатор
-			if is_reloading or is_auto_reloading or self.generator_indicators[token_key] or self.generator_auto_indicators[token_key] then
-				update_generator_visual(self, generator_id, token_key, token)
-			end
+				-- Обновляем визуал для всех генераторов, чтобы правильно обрабатывать завершение перезарядки
+	update_generator_visual(self, generator_id, token_key, token)
 		end
 	end
 end
@@ -1023,6 +1049,13 @@ function get_generator_reload_progress(self, token_key)
         if not generator or not generator.manual then return 1.0 end
         local total = generator.manual.reload_sec
         local elapsed = os.clock() - token.reload_start_time
+        
+        -- Проверяем, не завершилась ли перезарядка
+        if elapsed >= total then
+            -- Перезарядка завершена, но состояние еще не обновлено
+            return 1.0
+        end
+        
         return math.min(elapsed / total, 1.0)
     end
     

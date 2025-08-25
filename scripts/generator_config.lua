@@ -371,11 +371,9 @@ function M.can_activate_manual(generator_id)
         return false, "Generator not found"
     end
     
-
-    
     -- Добавляем отладочную информацию (с ограничением)
     debug_logger.log_with_throttle("generator_check_" .. generator_id, 
-        "GENERATOR CONFIG: Checking " .. generator_id .. " - capacity: " .. tostring(generator.manual.capacity) .. ", current: " .. tostring(generator.manual.current_capacity) .. ", reloading: " .. tostring(generator.manual.is_reloading), 
+    "GENERATOR CONFIG: Checking " .. generator_id .. " - capacity: " .. tostring(generator.manual.capacity) .. ", current: " .. tostring(generator.manual.current_capacity) .. ", reloading: " .. tostring(generator.manual.is_reloading), 
         15.0)
     
     -- Проверяем, есть ли емкость
@@ -433,6 +431,12 @@ function M.get_reload_progress(generator_id)
     local total_reload_time = generator.manual.reload_sec
     local elapsed_time = current_time - generator.manual.reload_start_time
     
+    -- Проверяем, не завершилась ли перезарядка
+    if elapsed_time >= total_reload_time then
+        -- Перезарядка завершена, но состояние еще не обновлено
+        return 1.0
+    end
+    
     local progress = elapsed_time / total_reload_time
     debug_logger.log_with_throttle("generator_progress_" .. generator_id, 
         "GENERATOR CONFIG: Progress for " .. generator_id .. " - current: " .. current_time .. ", start: " .. generator.manual.reload_start_time .. ", elapsed: " .. elapsed_time .. ", progress: " .. progress, 
@@ -468,7 +472,7 @@ function M.is_reloading(generator_id)
             -- Перезарядка закончилась
             generator.manual.is_reloading = false
             generator.manual.current_capacity = generator.manual.capacity
-            print("GENERATOR CONFIG: Reload finished for " .. generator_id .. " in is_reloading check")
+            print("GENERATOR CONFIG: Reload finished for " .. generator_id .. ", capacity restored to " .. generator.manual.capacity)
             return false
         end
         return true
