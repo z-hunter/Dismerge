@@ -3,6 +3,9 @@
 
 local M = {}
 
+-- Подключаем модуль логирования
+local debug_logger = require("scripts.debug_logger")
+
 -- Импортируем универсальный CSV парсер
 local csv_parser = require("scripts.csv_parser")
 -- Импортируем утилиты
@@ -22,7 +25,7 @@ function M.load_initial_field_config()
     -- Парсим CSV файл
     local records = csv_parser.parse_csv_file(file_path, field_names)
     if not records then
-        print("FIELD CONFIG: ERROR - Failed to parse initial field configuration file: " .. file_path)
+        debug_logger.log_error("Failed to parse initial field configuration file: " .. file_path)
         return nil
     end
     
@@ -50,7 +53,7 @@ function M.load_initial_field_config()
         end
     end
     
-    print("FIELD CONFIG: Successfully loaded initial field configuration")
+    debug_logger.log_init("Successfully loaded initial field configuration")
     return field_config
 end
 
@@ -82,9 +85,9 @@ function M.validate_field_config(field_config, evolution_tables)
     end
     
     if #errors > 0 then
-        print("FIELD CONFIG: Validation errors:")
+        debug_logger.log_error("Validation errors:")
         for _, error in ipairs(errors) do
-            print("  - " .. error)
+            debug_logger.log_error("  - " .. error)
         end
         return false, table.concat(errors, "; ")
     end
@@ -118,9 +121,9 @@ end
 
 -- Функция для отладочного вывода конфигурации
 function M.debug_print_config(field_config)
-    print("=== Field Configuration Debug ===")
+    debug_logger.log_init("=== Field Configuration Debug ===")
     if not field_config then
-        print("Configuration is nil")
+        debug_logger.log_init("Configuration is nil")
         return
     end
     
@@ -136,7 +139,7 @@ function M.debug_print_config(field_config)
                 line_str = line_str .. "[" .. token .. "] "
             end
         end
-        print(line_str)
+        debug_logger.log_init(line_str)
     end
 end
 

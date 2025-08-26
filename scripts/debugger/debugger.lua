@@ -1,9 +1,12 @@
 -- Отладочный модуль для тестирования механики выделения клеток
 local debugger = {}
 
+-- Подключаем модуль логирования
+local debug_logger = require("scripts.debug_logger")
+
 -- Функция для тестирования выделения клеток
 function debugger.test_cell_selection()
-    print("=== DEBUGGER: Testing cell selection ===")
+    debug_logger.log_init("=== DEBUGGER: Testing cell selection ===")
     
     -- Отправляем тестовое сообщение о клике на ячейку
     msg.post("main:/board_factorys#board", "cell_clicked", {
@@ -12,12 +15,12 @@ function debugger.test_cell_selection()
         cell_id = "test_cell"
     })
     
-    print("DEBUGGER: Sent test click to cell (3, 4)")
+    debug_logger.log_init("DEBUGGER: Sent test click to cell (3, 4)")
 end
 
 -- Функция для тестирования координат
 function debugger.test_coordinates()
-    print("=== DEBUGGER: Testing coordinate system ===")
+    debug_logger.log_init("=== DEBUGGER: Testing coordinate system ===")
     
     -- Тестируем преобразование координат
     local test_positions = {
@@ -29,14 +32,14 @@ function debugger.test_coordinates()
     }
     
     for i, pos in ipairs(test_positions) do
-        print("DEBUGGER: Testing screen position (" .. pos.x .. ", " .. pos.y .. ")")
+        debug_logger.log_init("DEBUGGER: Testing screen position (" .. pos.x .. ", " .. pos.y .. ")")
         -- Здесь можно добавить вызов find_cell_at_position если она доступна
     end
 end
 
 -- Функция для вывода состояния доски
 function debugger.print_board_state()
-    print("=== DEBUGGER: Board state ===")
+    debug_logger.log_init("=== DEBUGGER: Board state ===")
     
     -- Отправляем сообщение в board для получения состояния
     msg.post("main:/board_factorys#board", "debug_get_state")

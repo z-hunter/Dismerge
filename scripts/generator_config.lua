@@ -21,7 +21,7 @@ function M.load_generator_config()
     -- Определяем поля, которые нужно извлечь из CSV
     local field_names = {
         ["id"] = true,
-        ["comment"] = true,
+        ["comment"] = true, 
         ["Dispose after"] = true,
         ["Dispose to"] = true,
         ["M:Capacity"] = true,
@@ -38,7 +38,7 @@ function M.load_generator_config()
     -- Парсим CSV файл
     local records = csv_parser.parse_csv_file(file_path, field_names)
     if not records then
-        print("GENERATOR CONFIG: ERROR - Failed to parse generator configuration file: " .. file_path)
+        debug_logger.log_error("Failed to parse generator configuration file: " .. file_path)
         return nil
     end
     
@@ -62,7 +62,7 @@ function M.load_generator_config()
                     id = generator_id,
                     evo_id = evo_id,
                     level = level,
-                    comment = record["comment"] or "",
+                    comment = record["comment"] or "", 
                     dispose_after = csv_parser.get_field_value(record, "Dispose after", "number"),
                     dispose_to = record["Dispose to"] or "",
                     manual = {
@@ -92,7 +92,7 @@ function M.load_generator_config()
                     }
                 }
             else
-                print("GENERATOR CONFIG: WARNING - Invalid generator ID: " .. generator_id)
+                debug_logger.log_important("Invalid generator ID: " .. generator_id)
                 current_generator = nil
             end
         end
@@ -126,7 +126,7 @@ function M.load_generator_config()
     for _ in pairs(generators) do
         count = count + 1
     end
-    print("GENERATOR CONFIG: Successfully loaded " .. count .. " generators")
+    debug_logger.log_init("Successfully loaded " .. count .. " generators")
     return generators
 end
 
@@ -302,9 +302,9 @@ function M.validate_generator_config(evolution_tables)
     end
     
     if #errors > 0 then
-        print("GENERATOR CONFIG: Validation errors:")
+        debug_logger.log_error("Validation errors:")
         for _, error in ipairs(errors) do
-            print("  - " .. error)
+            debug_logger.log_error("  - " .. error)
         end
         return false, table.concat(errors, "; ")
     end
@@ -314,53 +314,53 @@ end
 
 -- Функция для отладочного вывода конфигурации
 function M.debug_print_config()
-    print("=== Generator Configuration Debug ===")
+    debug_logger.log_init("=== Generator Configuration Debug ===")
     for generator_id, generator in pairs(generators) do
-        print("Generator: " .. generator_id .. " (" .. generator.comment .. ")")
-        print("  Level: " .. generator.level .. " from chain: " .. generator.evo_id)
+        debug_logger.log_init("Generator: " .. generator_id .. " (" .. generator.comment .. ")")
+        debug_logger.log_init("  Level: " .. generator.level .. " from chain: " .. generator.evo_id)
         if generator.dispose_after then
-            print("  Dispose after: " .. generator.dispose_after .. " cycles")
+            debug_logger.log_init("  Dispose after: " .. generator.dispose_after .. " cycles")
         end
         if generator.dispose_to and generator.dispose_to ~= "" then
-            print("  Dispose to: " .. generator.dispose_to)
+            debug_logger.log_init("  Dispose to: " .. generator.dispose_to)
         end
         
         local has_manual = generator.manual.capacity and #generator.manual.outputs > 0
         local has_automatic = generator.automatic.capacity and #generator.automatic.outputs > 0
         
         if not has_manual and not has_automatic then
-            print("  WARNING: Generator has no generation types configured!")
+            debug_logger.log_important("Generator has no generation types configured!")
         end
         
         -- Ручная генерация
         if has_manual then
-            print("  Manual Generation:")
-            print("    Capacity: " .. generator.manual.capacity)
+            debug_logger.log_init("  Manual Generation:")
+            debug_logger.log_init("    Capacity: " .. generator.manual.capacity)
             if generator.manual.reload_sec then
-                print("    Reload: " .. generator.manual.reload_sec .. " seconds")
+                debug_logger.log_init("    Reload: " .. generator.manual.reload_sec .. " seconds")
             end
-            print("    Outputs:")
+            debug_logger.log_init("    Outputs:")
             for i, output in ipairs(generator.manual.outputs) do
-                print("      " .. output .. " (rate: " .. generator.manual.rates[i] .. ")")
+                debug_logger.log_init("      " .. output .. " (rate: " .. generator.manual.rates[i] .. ")")
             end
         end
         
         -- Автоматическая генерация
         if has_automatic then
-            print("  Automatic Generation:")
-            print("    Capacity: " .. generator.automatic.capacity)
+            debug_logger.log_init("  Automatic Generation:")
+            debug_logger.log_init("    Capacity: " .. generator.automatic.capacity)
             if generator.automatic.timer_sec then
-                print("    Timer: " .. generator.automatic.timer_sec .. " seconds")
+                debug_logger.log_init("    Timer: " .. generator.automatic.timer_sec .. " seconds")
             end
             if generator.automatic.reload_sec then
-                print("    Reload: " .. generator.automatic.reload_sec .. " seconds")
+                debug_logger.log_init("    Reload: " .. generator.automatic.reload_sec .. " seconds")
             end
-            print("    Outputs:")
+            debug_logger.log_init("    Outputs:")
             for i, output in ipairs(generator.automatic.outputs) do
-                print("      " .. output .. " (rate: " .. generator.automatic.rates[i] .. ")")
+                debug_logger.log_init("      " .. output .. " (rate: " .. generator.automatic.rates[i] .. ")")
             end
         end
-        print("")
+        debug_logger.log_init("")
     end
 end
 
@@ -390,7 +390,7 @@ function M.can_activate_manual(generator_id)
             -- Перезарядка закончилась
             generator.manual.is_reloading = false
             generator.manual.current_capacity = generator.manual.capacity
-            print("GENERATOR CONFIG: Reload finished for " .. generator_id .. ", capacity restored to " .. generator.manual.capacity)
+            debug_logger.log_important("Reload finished for " .. generator_id .. ", capacity restored to " .. generator.manual.capacity)
         end
     end
     
@@ -413,8 +413,8 @@ function M.activate_manual(generator_id)
         generator.manual.is_reloading = true
         generator.manual.reload_start_time = current_time
         generator.manual.reload_end_time = current_time + generator.manual.reload_sec
-        print("GENERATOR CONFIG: Generator " .. generator_id .. " started reloading for " .. generator.manual.reload_sec .. " seconds")
-        print("GENERATOR CONFIG: Reload start time: " .. current_time .. ", end time: " .. generator.manual.reload_end_time)
+        debug_logger.log_important("Generator " .. generator_id .. " started reloading for " .. generator.manual.reload_sec .. " seconds")
+        debug_logger.log_important("Reload start time: " .. current_time .. ", end time: " .. generator.manual.reload_end_time)
     end
     
     return true
@@ -472,7 +472,7 @@ function M.is_reloading(generator_id)
             -- Перезарядка закончилась
             generator.manual.is_reloading = false
             generator.manual.current_capacity = generator.manual.capacity
-            print("GENERATOR CONFIG: Reload finished for " .. generator_id .. ", capacity restored to " .. generator.manual.capacity)
+            debug_logger.log_important("Reload finished for " .. generator_id .. ", capacity restored to " .. generator.manual.capacity)
             return false
         end
         return true
@@ -510,7 +510,7 @@ function M.increment_cycle_count(generator_id)
     end
     
     generator.manual.completed_cycles = generator.manual.completed_cycles + 1
-    print("GENERATOR CONFIG: Incremented cycle count for " .. generator_id .. " to " .. generator.manual.completed_cycles .. "/" .. generator.dispose_after)
+    debug_logger.log_important("Incremented cycle count for " .. generator_id .. " to " .. generator.manual.completed_cycles .. "/" .. generator.dispose_after)
     
     return true
 end
@@ -541,7 +541,7 @@ function M.reset_cycle_count(generator_id)
     local generator = generators[generator_id]
     if generator then
         generator.manual.completed_cycles = 0
-        print("GENERATOR CONFIG: Reset cycle count for " .. generator_id)
+        debug_logger.log_important("Reset cycle count for " .. generator_id)
     end
 end
 

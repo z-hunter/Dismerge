@@ -9,6 +9,9 @@
 
 local M = {}
 
+-- Подключаем модуль логирования
+local debug_logger = require("scripts.debug_logger")
+
 -- Функция для удаления пробелов в начале и конце строки
 local function trim(str)
     return str:match("^%s*(.-)%s*$")
@@ -54,7 +57,7 @@ function M.parse_csv_file(file_path, field_names)
     -- Читаем файл
     local file = io.open(file_path, "r")
     if not file then
-        print("CSV PARSER: ERROR - Cannot open file: " .. file_path)
+        debug_logger.log_error("Cannot open file: " .. file_path)
         return nil
     end
     
@@ -65,7 +68,7 @@ function M.parse_csv_file(file_path, field_names)
     file:close()
     
     if #lines < 3 then
-        print("CSV PARSER: ERROR - File too short (need at least 3 lines): " .. file_path)
+        debug_logger.log_error("File too short (need at least 3 lines): " .. file_path)
         return nil
     end
     
@@ -84,7 +87,7 @@ function M.parse_csv_file(file_path, field_names)
             end
         end
         if not field_indices[field_name] then
-            print("CSV PARSER: WARNING - Field '" .. field_name .. "' not found in headers")
+            debug_logger.log_important("Field '" .. field_name .. "' not found in headers")
         end
     end
     
@@ -112,7 +115,7 @@ function M.parse_csv_file(file_path, field_names)
         end
     end
     
-    print("CSV PARSER: Successfully parsed " .. #result .. " records from " .. file_path)
+    debug_logger.log_init("Successfully parsed " .. #result .. " records from " .. file_path)
     return result
 end
 

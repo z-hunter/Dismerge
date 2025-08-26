@@ -3,6 +3,9 @@
 
 local M = {}
 
+-- Подключаем модуль логирования
+local debug_logger = require("scripts.debug_logger")
+
 -- Импортируем универсальный CSV парсер
 local csv_parser = require("scripts.csv_parser")
 
@@ -26,7 +29,7 @@ function M.load_evolution_tables()
     -- Парсим CSV файл
     local records = csv_parser.parse_csv_file(file_path, field_names)
     if not records then
-        print("ERROR: Failed to parse evolution tables file: " .. file_path)
+        debug_logger.log_error("Failed to parse evolution tables file: " .. file_path)
         return false
     end
     
@@ -58,7 +61,7 @@ function M.load_evolution_tables()
             -- Сохраняем цепочку
             evolution_tables[evo_id] = evolution_chain
             
-            print("Loaded evolution chain: " .. evo_id .. " - " .. name_str .. " (max grade: " .. max_grade .. ")")
+            debug_logger.log_init("Loaded evolution chain: " .. evo_id .. " - " .. name_str .. " (max grade: " .. max_grade .. ")")
         end
     end
     
@@ -67,14 +70,14 @@ function M.load_evolution_tables()
     for _ in pairs(evolution_tables) do
         chain_count = chain_count + 1
     end
-    print("Evolution tables loaded successfully. Total chains: " .. chain_count)
+    debug_logger.log_init("Evolution tables loaded successfully. Total chains: " .. chain_count)
     
     -- Создаем таблицу соответствия evo_id и индексов для цветов
     local chain_index = 0
     for evo_id, _ in pairs(evolution_tables) do
         chain_index = chain_index + 1
         evolution_tables[evo_id].color_index = chain_index
-        print("Chain " .. evo_id .. " assigned color index: " .. chain_index)
+        debug_logger.log_init("Chain " .. evo_id .. " assigned color index: " .. chain_index)
     end
     
     return true
@@ -172,16 +175,16 @@ end
 
 -- Отладочная функция для вывода всех цепочек
 function M.debug_print_chains()
-    print("=== Evolution Chains Debug ===")
+    debug_logger.log_init("=== Evolution Chains Debug ===")
     for evo_id, chain in pairs(evolution_tables) do
-        print("Chain: " .. evo_id .. " - " .. chain.name)
-        print("  Max Grade: " .. chain.max_grade)
-        print("  Next Chain: " .. (chain.next_evo_id or "None"))
-        print("  Levels:")
+        debug_logger.log_init("Chain: " .. evo_id .. " - " .. chain.name)
+        debug_logger.log_init("  Max Grade: " .. chain.max_grade)
+        debug_logger.log_init("  Next Chain: " .. (chain.next_evo_id or "None"))
+        debug_logger.log_init("  Levels:")
         for level, name in pairs(chain.levels) do
-            print("    " .. level .. ": " .. name)
+            debug_logger.log_init("    " .. level .. ": " .. name)
         end
-        print("")
+        debug_logger.log_init("")
     end
 end
 
