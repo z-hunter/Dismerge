@@ -69,26 +69,14 @@ function M.load_generator_config()
                         capacity = csv_parser.get_field_value(record, "M:Capacity", "number"),
                         reload_sec = csv_parser.get_field_value(record, "M:Reload(sec)", "number"),
                         outputs = {},
-                        rates = {},
-                        current_capacity = csv_parser.get_field_value(record, "M:Capacity", "number"), -- Инициализируем текущую емкость
-                        is_reloading = false,
-                        reload_start_time = 0, -- Время начала перезарядки
-                        reload_end_time = 0,    -- Время окончания перезарядки
-                        used_activations = 0, -- Счетчик использованных активаций
-                        completed_cycles = 0 -- Счетчик завершенных циклов
+                        rates = {}
                     },
                     automatic = {
                         capacity = csv_parser.get_field_value(record, "A:Capacity", "number"),
                         timer_sec = csv_parser.get_field_value(record, "A:Timer(sec)", "number"),
                         reload_sec = csv_parser.get_field_value(record, "A:Reload(sec)", "number"),
                         outputs = {},
-                        rates = {},
-                        current_capacity = csv_parser.get_field_value(record, "A:Capacity", "number"), -- Инициализируем текущую емкость
-                        is_reloading = false,
-                        reload_start_time = 0, -- Время начала перезарядки
-                        reload_end_time = 0,    -- Время окончания перезарядки
-                        used_activations = 0, -- Счетчик использованных активаций
-                        completed_cycles = 0 -- Счетчик завершенных циклов
+                        rates = {}
                     }
                 }
             else
@@ -158,16 +146,6 @@ function M.get_random_manual_output(generator_id)
         return nil, "No manual generation configured"
     end
     
-    -- Проверяем, не на перезарядке ли генератор
-    if generator.manual.is_reloading then
-        return nil, "Generator is reloading"
-    end
-    
-    -- Проверяем емкость
-    if generator.manual.current_capacity and generator.manual.current_capacity <= 0 then
-        return nil, "Generator capacity exhausted"
-    end
-    
     -- Вычисляем общую сумму вероятностей
     local total_rate = 0
     for _, rate in ipairs(generator.manual.rates) do
@@ -202,18 +180,8 @@ function M.get_random_automatic_output(generator_id)
     end
     
     -- Проверяем, есть ли автоматическая генерация
-    if not generator.automatic or not generator.automatic.capacity or #generator.automatic.outputs == 0 then
+    if not generator.automatic.capacity or #generator.automatic.outputs == 0 then
         return nil, "No automatic generation configured"
-    end
-    
-    -- Проверяем, не на перезарядке ли генератор
-    if generator.automatic.is_reloading then
-        return nil, "Generator is reloading"
-    end
-    
-    -- Проверяем емкость
-    if generator.automatic.current_capacity and generator.automatic.current_capacity <= 0 then
-        return nil, "Generator capacity exhausted"
     end
     
     -- Вычисляем общую сумму вероятностей
@@ -242,288 +210,10 @@ function M.get_random_automatic_output(generator_id)
     return generator.automatic.outputs[#generator.automatic.outputs], nil
 end
 
--- Функция для валидации конфигурации генераторов
-function M.validate_generator_config(evolution_tables)
-    local errors = {}
-    
-    for generator_id, generator in pairs(generators) do
-        -- Проверяем существование эволюционной цепочки
-        local chain = evolution_tables.get_evolution_chain(generator.evo_id)
-        if not chain then
-            table.insert(errors, "Generator '" .. generator_id .. "' references non-existent evolution chain '" .. generator.evo_id .. "'")
-        elseif generator.level > chain.max_grade then
-            table.insert(errors, "Generator '" .. generator_id .. "' level " .. generator.level .. " exceeds max grade " .. chain.max_grade)
-        end
-        
-        -- Проверяем dispose_to
-        if generator.dispose_to and generator.dispose_to ~= "" then
-            local dispose_evo_id, dispose_level = utils.parse_token_string(generator.dispose_to)
-            if dispose_evo_id and dispose_level then
-                local dispose_chain = evolution_tables.get_evolution_chain(dispose_evo_id)
-                if not dispose_chain then
-                    table.insert(errors, "Generator '" .. generator_id .. "' dispose_to references non-existent chain '" .. dispose_evo_id .. "'")
-                elseif dispose_level > dispose_chain.max_grade then
-                    table.insert(errors, "Generator '" .. generator_id .. "' dispose_to level " .. dispose_level .. " exceeds max grade " .. dispose_chain.max_grade)
-                end
-            else
-                table.insert(errors, "Generator '" .. generator_id .. "' has invalid dispose_to format: " .. generator.dispose_to)
-            end
-        end
-        
-        -- Проверяем выходы ручной генерации
-        for i, output in ipairs(generator.manual.outputs) do
-            local output_evo_id, output_level = utils.parse_token_string(output)
-            if output_evo_id and output_level then
-                local output_chain = evolution_tables.get_evolution_chain(output_evo_id)
-                if not output_chain then
-                    table.insert(errors, "Generator '" .. generator_id .. "' manual output " .. i .. " references non-existent chain '" .. output_evo_id .. "'")
-                elseif output_level > output_chain.max_grade then
-                    table.insert(errors, "Generator '" .. generator_id .. "' manual output " .. i .. " level " .. output_level .. " exceeds max grade " .. output_chain.max_grade)
-                end
-            else
-                table.insert(errors, "Generator '" .. generator_id .. "' has invalid manual output format: " .. output)
-            end
-        end
-        
-        -- Проверяем выходы автоматической генерации
-        for i, output in ipairs(generator.automatic.outputs) do
-            local output_evo_id, output_level = utils.parse_token_string(output)
-            if output_evo_id and output_level then
-                local output_chain = evolution_tables.get_evolution_chain(output_evo_id)
-                if not output_chain then
-                    table.insert(errors, "Generator '" .. generator_id .. "' automatic output " .. i .. " references non-existent chain '" .. output_evo_id .. "'")
-                elseif output_level > output_chain.max_grade then
-                    table.insert(errors, "Generator '" .. generator_id .. "' automatic output " .. i .. " level " .. output_level .. " exceeds max grade " .. output_chain.max_grade)
-                end
-            else
-                table.insert(errors, "Generator '" .. generator_id .. "' has invalid automatic output format: " .. output)
-            end
-        end
-    end
-    
-    if #errors > 0 then
-        debug_logger.log_error("Validation errors:")
-        for _, error in ipairs(errors) do
-            debug_logger.log_error("  - " .. error)
-        end
-        return false, table.concat(errors, "; ")
-    end
-    
-    return true
-end
-
--- Функция для отладочного вывода конфигурации
-function M.debug_print_config()
-    debug_logger.log_init("=== Generator Configuration Debug ===")
-    for generator_id, generator in pairs(generators) do
-        debug_logger.log_init("Generator: " .. generator_id .. " (" .. generator.comment .. ")")
-        debug_logger.log_init("  Level: " .. generator.level .. " from chain: " .. generator.evo_id)
-        if generator.dispose_after then
-            debug_logger.log_init("  Dispose after: " .. generator.dispose_after .. " cycles")
-        end
-        if generator.dispose_to and generator.dispose_to ~= "" then
-            debug_logger.log_init("  Dispose to: " .. generator.dispose_to)
-        end
-        
-        local has_manual = generator.manual.capacity and #generator.manual.outputs > 0
-        local has_automatic = generator.automatic.capacity and #generator.automatic.outputs > 0
-        
-        if not has_manual and not has_automatic then
-            debug_logger.log_important("Generator has no generation types configured!")
-        end
-        
-        -- Ручная генерация
-        if has_manual then
-            debug_logger.log_init("  Manual Generation:")
-            debug_logger.log_init("    Capacity: " .. generator.manual.capacity)
-            if generator.manual.reload_sec then
-                debug_logger.log_init("    Reload: " .. generator.manual.reload_sec .. " seconds")
-            end
-            debug_logger.log_init("    Outputs:")
-            for i, output in ipairs(generator.manual.outputs) do
-                debug_logger.log_init("      " .. output .. " (rate: " .. generator.manual.rates[i] .. ")")
-            end
-        end
-        
-        -- Автоматическая генерация
-        if has_automatic then
-            debug_logger.log_init("  Automatic Generation:")
-            debug_logger.log_init("    Capacity: " .. generator.automatic.capacity)
-            if generator.automatic.timer_sec then
-                debug_logger.log_init("    Timer: " .. generator.automatic.timer_sec .. " seconds")
-            end
-            if generator.automatic.reload_sec then
-                debug_logger.log_init("    Reload: " .. generator.automatic.reload_sec .. " seconds")
-            end
-            debug_logger.log_init("    Outputs:")
-            for i, output in ipairs(generator.automatic.outputs) do
-                debug_logger.log_init("      " .. output .. " (rate: " .. generator.automatic.rates[i] .. ")")
-            end
-        end
-        debug_logger.log_init("")
-    end
-end
-
--- Функция для проверки, может ли генератор быть активирован (не на перезарядке)
-function M.can_activate_manual(generator_id)
-    local generator = generators[generator_id]
-    if not generator then
-        return false, "Generator not found"
-    end
-    
-    -- Добавляем отладочную информацию (с ограничением)
-    debug_logger.log_with_throttle("generator_check_" .. generator_id, 
-    "GENERATOR CONFIG: Checking " .. generator_id .. " - capacity: " .. tostring(generator.manual.capacity) .. ", current: " .. tostring(generator.manual.current_capacity) .. ", reloading: " .. tostring(generator.manual.is_reloading), 
-        15.0)
-    
-    -- Проверяем, есть ли емкость
-    if not generator.manual.capacity or generator.manual.current_capacity <= 0 then
-        return false, "No capacity left"
-    end
-    
-    -- Проверяем, не на перезарядке ли
-    if generator.manual.is_reloading then
-        local current_time = os.clock()
-        if current_time < generator.manual.reload_end_time then
-            return false, "Still reloading"
-        else
-            -- Перезарядка закончилась
-            generator.manual.is_reloading = false
-            generator.manual.current_capacity = generator.manual.capacity
-            debug_logger.log_important("Reload finished for " .. generator_id .. ", capacity restored to " .. generator.manual.capacity)
-        end
-    end
-    
-    return true
-end
-
--- Функция для активации генератора (уменьшает емкость и запускает перезарядку если нужно)
-function M.activate_manual(generator_id)
-    local generator = generators[generator_id]
-    if not generator then
-        return false, "Generator not found"
-    end
-    
-    -- Уменьшаем емкость
-    generator.manual.current_capacity = generator.manual.current_capacity - 1
-    
-    -- Если емкость закончилась, запускаем перезарядку
-    if generator.manual.current_capacity <= 0 and generator.manual.reload_sec then
-        local current_time = os.clock()
-        generator.manual.is_reloading = true
-        generator.manual.reload_start_time = current_time
-        generator.manual.reload_end_time = current_time + generator.manual.reload_sec
-        debug_logger.log_important("Generator " .. generator_id .. " started reloading for " .. generator.manual.reload_sec .. " seconds")
-        debug_logger.log_important("Reload start time: " .. current_time .. ", end time: " .. generator.manual.reload_end_time)
-    end
-    
-    return true
-end
-
--- Функция для получения прогресса перезарядки (0.0 - 1.0)
-function M.get_reload_progress(generator_id)
-    local generator = generators[generator_id]
-    if not generator or not generator.manual.is_reloading then
-        return 1.0 -- Перезарядка не нужна или завершена
-    end
-    
-    local current_time = os.clock()
-    local total_reload_time = generator.manual.reload_sec
-    local elapsed_time = current_time - generator.manual.reload_start_time
-    
-    -- Проверяем, не завершилась ли перезарядка
-    if elapsed_time >= total_reload_time then
-        -- Перезарядка завершена, но состояние еще не обновлено
-        return 1.0
-    end
-    
-    local progress = elapsed_time / total_reload_time
-    debug_logger.log_with_throttle("generator_progress_" .. generator_id, 
-        "GENERATOR CONFIG: Progress for " .. generator_id .. " - current: " .. current_time .. ", start: " .. generator.manual.reload_start_time .. ", elapsed: " .. elapsed_time .. ", progress: " .. progress, 
-        10.0)
-    return math.min(progress, 1.0)
-end
-
--- Функция для получения оставшегося времени перезарядки в секундах
-function M.get_reload_remaining_time(generator_id)
-    local generator = generators[generator_id]
-    if not generator or not generator.manual.is_reloading then
-        return 0
-    end
-    
-    local current_time = os.clock()
-    local remaining = generator.manual.reload_end_time - current_time
-    return math.max(remaining, 0)
-end
-
--- Функция для проверки, находится ли генератор на перезарядке
-function M.is_reloading(generator_id)
-    local generator = generators[generator_id]
-    if not generator then
-        return false
-    end
-    
-    if generator.manual.is_reloading then
-        local current_time = os.clock()
-        debug_logger.log_with_throttle("generator_reload_check_" .. generator_id, 
-            "GENERATOR CONFIG: Checking reload for " .. generator_id .. " - current: " .. current_time .. ", end: " .. generator.manual.reload_end_time .. ", remaining: " .. (generator.manual.reload_end_time - current_time), 
-            10.0)
-        if current_time >= generator.manual.reload_end_time then
-            -- Перезарядка закончилась
-            generator.manual.is_reloading = false
-            generator.manual.current_capacity = generator.manual.capacity
-            debug_logger.log_important("Reload finished for " .. generator_id .. ", capacity restored to " .. generator.manual.capacity)
-            return false
-        end
-        return true
-    end
-    
-    return false
-end
-
 -- Функция для проверки, является ли генератор одноразовым
 function M.is_disposable(generator_id)
     local generator = generators[generator_id]
     return generator and generator.dispose_after and generator.dispose_after > 0
-end
-
--- Функция для получения количества оставшихся циклов
-function M.get_remaining_cycles(generator_id)
-    local generator = generators[generator_id]
-    if not generator or not generator.dispose_after then
-        return nil
-    end
-    
-    local completed_cycles = generator.manual.completed_cycles or 0
-    return math.max(0, generator.dispose_after - completed_cycles)
-end
-
--- Функция для увеличения счетчика завершенных циклов
-function M.increment_cycle_count(generator_id)
-    local generator = generators[generator_id]
-    if not generator or not generator.dispose_after then
-        return false
-    end
-    
-    if not generator.manual.completed_cycles then
-        generator.manual.completed_cycles = 0
-    end
-    
-    generator.manual.completed_cycles = generator.manual.completed_cycles + 1
-    debug_logger.log_important("Incremented cycle count for " .. generator_id .. " to " .. generator.manual.completed_cycles .. "/" .. generator.dispose_after)
-    
-    return true
-end
-
--- Функция для проверки, нужно ли уничтожить генератор
-function M.should_dispose(generator_id)
-    local generator = generators[generator_id]
-    if not generator or not generator.dispose_after then
-        return false
-    end
-    
-    local completed_cycles = generator.manual.completed_cycles or 0
-    return completed_cycles >= generator.dispose_after
 end
 
 -- Функция для получения ID фишки, в которую превращается генератор
@@ -536,13 +226,105 @@ function M.get_dispose_to(generator_id)
     return generator.dispose_to
 end
 
--- Функция для сброса счетчика циклов (для тестирования)
-function M.reset_cycle_count(generator_id)
-    local generator = generators[generator_id]
-    if generator then
-        generator.manual.completed_cycles = 0
-        debug_logger.log_important("Reset cycle count for " .. generator_id)
+-- Функция для валидации конфигурации генераторов
+function M.validate_generator_config(evolution_tables)
+    if not evolution_tables then
+        return false, "Evolution tables not provided"
     end
+    
+    local errors = {}
+    
+    for generator_id, generator in pairs(generators) do
+        -- Проверяем, существует ли эволюционная цепочка
+        local chain = evolution_tables.get_evolution_chain(generator.evo_id)
+        if not chain then
+            table.insert(errors, "Generator " .. generator_id .. " references non-existent evolution chain: " .. generator.evo_id)
+        elseif generator.level > chain.max_grade then
+            table.insert(errors, "Generator " .. generator_id .. " level " .. generator.level .. " exceeds max grade " .. chain.max_grade .. " for chain: " .. generator.evo_id)
+        end
+        
+        -- Проверяем ручную генерацию
+        if generator.manual.capacity and generator.manual.capacity > 0 then
+            if #generator.manual.outputs == 0 then
+                table.insert(errors, "Generator " .. generator_id .. " has manual capacity but no outputs")
+            end
+            if #generator.manual.rates == 0 then
+                table.insert(errors, "Generator " .. generator_id .. " has manual capacity but no rates")
+            end
+            if #generator.manual.outputs ~= #generator.manual.rates then
+                table.insert(errors, "Generator " .. generator_id .. " has mismatched manual outputs and rates count")
+            end
+        end
+        
+        -- Проверяем автоматическую генерацию
+        if generator.automatic.capacity and generator.automatic.capacity > 0 then
+            if #generator.automatic.outputs == 0 then
+                table.insert(errors, "Generator " .. generator_id .. " has automatic capacity but no outputs")
+            end
+            if #generator.automatic.rates == 0 then
+                table.insert(errors, "Generator " .. generator_id .. " has automatic capacity but no rates")
+            end
+            if #generator.automatic.outputs ~= #generator.automatic.rates then
+                table.insert(errors, "Generator " .. generator_id .. " has mismatched automatic outputs and rates count")
+            end
+        end
+        
+        -- Проверяем dispose_to
+        if generator.dispose_to and generator.dispose_to ~= "" then
+            local dispose_evo_id, dispose_level = utils.parse_token_string(generator.dispose_to)
+            if not dispose_evo_id or not dispose_level then
+                table.insert(errors, "Generator " .. generator_id .. " has invalid dispose_to format: " .. generator.dispose_to)
+            else
+                local dispose_chain = evolution_tables.get_evolution_chain(dispose_evo_id)
+                if not dispose_chain then
+                    table.insert(errors, "Generator " .. generator_id .. " dispose_to references non-existent evolution chain: " .. dispose_evo_id)
+                elseif dispose_level > dispose_chain.max_grade then
+                    table.insert(errors, "Generator " .. generator_id .. " dispose_to level " .. dispose_level .. " exceeds max grade " .. dispose_chain.max_grade .. " for chain: " .. dispose_evo_id)
+                end
+            end
+        end
+    end
+    
+    if #errors > 0 then
+        local error_msg = "Generator configuration validation failed:\n" .. table.concat(errors, "\n")
+        return false, error_msg
+    end
+    
+    return true
+end
+
+-- Функция для отладочного вывода конфигурации
+function M.debug_print_config()
+    print("=== GENERATOR CONFIGURATION ===")
+    for generator_id, generator in pairs(generators) do
+        print("Generator: " .. generator_id)
+        print("  Comment: " .. (generator.comment or "none"))
+        print("  Dispose after: " .. (generator.dispose_after or "never"))
+        print("  Dispose to: " .. (generator.dispose_to or "nothing"))
+        
+        if generator.manual.capacity then
+            print("  Manual:")
+            print("    Capacity: " .. generator.manual.capacity)
+            print("    Reload time: " .. (generator.manual.reload_sec or "none") .. "s")
+            print("    Outputs: " .. #generator.manual.outputs)
+            for i, output in ipairs(generator.manual.outputs) do
+                print("      " .. output .. " (rate: " .. (generator.manual.rates[i] or 0) .. ")")
+            end
+        end
+        
+        if generator.automatic.capacity then
+            print("  Automatic:")
+            print("    Capacity: " .. generator.automatic.capacity)
+            print("    Timer: " .. (generator.automatic.timer_sec or "none") .. "s")
+            print("    Reload time: " .. (generator.automatic.reload_sec or "none") .. "s")
+            print("    Outputs: " .. #generator.automatic.outputs)
+            for i, output in ipairs(generator.automatic.outputs) do
+                print("      " .. output .. " (rate: " .. (generator.automatic.rates[i] or 0) .. ")")
+            end
+        end
+        print()
+    end
+    print("=== END GENERATOR CONFIGURATION ===")
 end
 
 return M 

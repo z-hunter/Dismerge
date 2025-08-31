@@ -303,10 +303,10 @@ function create_token_on_board(self, evo_id, level, grid_x, grid_y, initial_z)
             reload_end_time = 0
         }
         
-        -- Сбрасываем счетчик циклов для одноразовых генераторов при создании нового экземпляра
+        -- Инициализируем счетчик циклов для одноразовых генераторов для каждого экземпляра отдельно
         if generator_config.is_disposable(utils.create_token_string(evo_id, level)) then
-            generator.manual.completed_cycles = 0
-            print("BOARD: Reset completed_cycles for new disposable generator " .. utils.create_token_string(evo_id, level))
+            self.tokens[token_key].completed_cycles = 0
+            print("BOARD: Initialized completed_cycles for new disposable generator instance " .. utils.create_token_string(evo_id, level))
         end
     else
         self.tokens[token_key] = { id = token_id, level = level, evo_id = evo_id }
@@ -809,8 +809,8 @@ function update_generators_visual(self)
 			local is_reloading = token.is_reloading -- Проверяем только ручные генераторы
 			local is_auto_reloading = token.is_auto_reloading -- Проверяем только автоматические генераторы
 			
-				-- Обновляем визуал для всех генераторов, чтобы правильно обрабатывать завершение перезарядки
-	update_generator_visual(self, generator_id, token_key, token)
+			-- Обновляем визуал для всех генераторов, чтобы правильно обрабатывать завершение перезарядки
+			update_generator_visual(self, generator_id, token_key, token)
 		end
 	end
 end
@@ -969,7 +969,7 @@ function activate_generator_token(self, token_key)
     
     -- Проверяем, не исчерпан ли лимит циклов для одноразового генератора
     if generator_config.is_disposable(generator_id) then
-        local remaining_cycles = generator_config.get_remaining_cycles(generator_id)
+        local remaining_cycles = get_remaining_cycles_for_token(self, token_key)
         if remaining_cycles and remaining_cycles <= 0 then
             return false, "Disposable generator exhausted"
         end
@@ -980,8 +980,8 @@ function activate_generator_token(self, token_key)
     
     -- Проверяем, завершился ли цикл для одноразового генератора
     if generator_config.is_disposable(generator_id) and token.current_capacity <= 0 then
-        generator_config.increment_cycle_count(generator_id)
-        print("BOARD: Completed cycle for disposable generator " .. generator_id)
+        increment_cycle_count_for_token(self, token_key)
+        print("BOARD: Completed cycle for disposable generator instance " .. generator_id .. " (cycle " .. (token.completed_cycles or 0) .. "/" .. (generator.dispose_after or 0) .. ")")
     end
     
     -- Если емкость закончилась, запускаем перезарядку
@@ -1008,9 +1008,11 @@ function is_generator_reloading(self, token_key)
                 
                 -- Проверяем, не исчерпан ли лимит циклов для одноразового генератора
                 if generator_config.is_disposable(utils.create_token_string(token.evo_id, token.level)) then
-                    local remaining_cycles = generator_config.get_remaining_cycles(utils.create_token_string(token.evo_id, token.level))
+                    local remaining_cycles = get_remaining_cycles_for_token(self, token_key)
                     if remaining_cycles and remaining_cycles <= 0 then
-                        print("BOARD: Disposable generator exhausted after reload, will be disposed on next activation")
+                        print("BOARD: Disposable generator exhausted after reload, disposing now")
+                        -- Если генератор исчерпан, сразу уничтожаем его
+                        handle_disposable_generator_disposal(self, token_key)
                     end
                 end
             end
@@ -1100,7 +1102,7 @@ function activate_generator(self, token_key, cell)
     end
     
     -- Проверяем, нужно ли уничтожить одноразовый генератор
-    if generator_config.should_dispose(generator_id) then
+    if should_dispose_token(self, token_key) then
         handle_disposable_generator_disposal(self, token_key)
     end
     
@@ -1501,9 +1503,9 @@ function initialize_generators(self)
 					
 					-- Инициализируем счетчик циклов для одноразовых генераторов
 					if generator_config.is_disposable(generator_id) then
-						-- Сбрасываем счетчик циклов для новых экземпляров одноразовых генераторов
-						generator.manual.completed_cycles = 0
-						local remaining = generator_config.get_remaining_cycles(generator_id)
+						-- Инициализируем счетчик циклов для каждого экземпляра отдельно
+						token.completed_cycles = 0
+						local remaining = generator.dispose_after
 						print("BOARD: Initialized disposable generator " .. generator_id .. " with capacity " .. (generator.manual.capacity or 0) .. " and " .. (remaining or 0) .. " remaining cycles")
 					else
 						print("BOARD: Initialized manual generator " .. generator_id .. " with capacity " .. (generator.manual.capacity or 0))
@@ -1665,7 +1667,7 @@ function handle_disposable_generator_disposal(self, token_key)
     if not generator then return false end
     
     -- Проверяем, нужно ли уничтожить генератор
-    if not generator_config.should_dispose(generator_id) then
+    if not should_dispose_token(self, token_key) then
         return false
     end
     
@@ -1712,5 +1714,56 @@ function handle_disposable_generator_disposal(self, token_key)
     end
     
     return true
+end
+
+-- Функция для получения количества оставшихся циклов для конкретного токена
+function get_remaining_cycles_for_token(self, token_key)
+    local token = self.tokens[token_key]
+    if not token then return nil end
+    
+    local generator_id = utils.create_token_string(token.evo_id, token.level)
+    local generator = generator_config.get_generator(generator_id)
+    if not generator or not generator.dispose_after then
+        return nil
+    end
+    
+    local completed_cycles = token.completed_cycles or 0
+    return math.max(0, generator.dispose_after - completed_cycles)
+end
+
+-- Функция для увеличения счетчика завершенных циклов для конкретного токена
+function increment_cycle_count_for_token(self, token_key)
+    local token = self.tokens[token_key]
+    if not token then return false end
+    
+    local generator_id = utils.create_token_string(token.evo_id, token.level)
+    local generator = generator_config.get_generator(generator_id)
+    if not generator or not generator.dispose_after then
+        return false
+    end
+    
+    if not token.completed_cycles then
+        token.completed_cycles = 0
+    end
+    
+    token.completed_cycles = token.completed_cycles + 1
+    print("BOARD: Incremented cycle count for token " .. token_key .. " to " .. token.completed_cycles .. "/" .. generator.dispose_after)
+    
+    return true
+end
+
+-- Функция для проверки, нужно ли уничтожить конкретный токен
+function should_dispose_token(self, token_key)
+    local token = self.tokens[token_key]
+    if not token then return false end
+    
+    local generator_id = utils.create_token_string(token.evo_id, token.level)
+    local generator = generator_config.get_generator(generator_id)
+    if not generator or not generator.dispose_after then
+        return false
+    end
+    
+    local completed_cycles = token.completed_cycles or 0
+    return completed_cycles >= generator.dispose_after
 end
 
