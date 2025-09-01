@@ -181,6 +181,16 @@ function on_message(self, message_id, message, sender)
 		
 		msg.post(sender, "token_info", info)
 		
+	elseif message_id == hash("play_merge_animation") then
+		-- Анимация появления новой фишки при мердже
+		print("TOKEN: Playing merge animation for new token")
+		
+		-- Устанавливаем начальный масштаб (меньше нормального)
+		go.set(".", "scale", vmath.vector3(0.85, 0.85, 1.0))
+		
+		-- Запускаем анимацию масштабирования с эффектом отскока
+		go.animate(".", "scale", go.PLAYBACK_ONCE_FORWARD, vmath.vector3(1, 1, 1.0),
+				   go.EASING_OUTELASTIC, 0.38
 
 	end
 end 

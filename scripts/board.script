@@ -1248,7 +1248,12 @@ function perform_merge(self, target_cell, target_token, target_key)
 			go.delete(self.dragged_token)
 		end
 		
+		-- Запускаем анимацию появления для новой фишки после успешного мерджа
 		local new_token = self.tokens[token_key]
+		if new_token and new_token.id then
+			msg.post(new_token.id, "play_merge_animation")
+			print("BOARD: Started merge animation for new token after successful merge")
+		end
 		print("BOARD: Created merged token " .. merge_result.evo_id .. " level " .. merge_result.level .. " at grid(" .. target_cell.x .. ", " .. target_cell.y .. ") key=" .. tostring(token_key))
 		print("DEBUG: MERGE - new_token.id=" .. tostring(new_token and new_token.id) .. ", new_token exists=" .. tostring(new_token ~= nil))
 		-- Очищаем данные об исходной позиции перетаскиваемой фишки

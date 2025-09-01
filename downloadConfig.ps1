@@ -3,7 +3,7 @@ $OutDir = "config"
 New-Item -ItemType Directory -Force $OutDir | Out-Null
 
 function Download($gid, $outName) {
-  $u = "$Base$gid&single=true&output=csv"   # < Никакого /export здесь!
+  $u = "$Base$gid&single=true&output=csv"   
   Write-Host "GET $u"
   Invoke-WebRequest -Uri $u -OutFile (Join-Path $OutDir $outName) -ErrorAction Stop
   "Imported $OutDir\$outName"
