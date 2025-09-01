@@ -190,7 +190,7 @@ function on_message(self, message_id, message, sender)
 		
 		-- Запускаем анимацию масштабирования с эффектом отскока
 		go.animate(".", "scale", go.PLAYBACK_ONCE_FORWARD, vmath.vector3(1, 1, 1.0),
-				   go.EASING_OUTELASTIC, 0.38
+				   go.EASING_OUTELASTIC, 0.38)
 
 	end
 end 
