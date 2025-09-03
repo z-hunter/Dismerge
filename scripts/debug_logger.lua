@@ -11,7 +11,9 @@ local LOG_SETTINGS = {
     GENERATOR_CONFIG = false,    -- Отключаем логи конфигурации генераторов
     IMPORTANT = true,            -- Оставляем важные сообщения
     ERRORS = true,               -- Оставляем ошибки
-    INIT = true                  -- Оставляем инициализацию
+    INIT = true,                 -- Оставляем инициализацию
+    ICON_ANIMATION = true,       -- Включаем логи анимации иконок
+    UPDATE_DT = true             -- Включаем логи dt в update
 }
 
 -- Функция для логирования с ограничением по времени
@@ -75,6 +77,22 @@ function M.log_important(message, throttle_seconds)
         return -- Отключено
     end
     M.log_with_throttle("important", "[IMPORTANT] " .. message, throttle_seconds or 5.0)
+end
+
+-- Функция для логирования анимации иконок (с ограничением)
+function M.log_icon_animation(message, throttle_seconds)
+    if not LOG_SETTINGS.ICON_ANIMATION then
+        return -- Отключено
+    end
+    M.log_with_throttle("icon_animation", "[ICON ANIMATION] " .. message, throttle_seconds or 2.0)
+end
+
+-- Функция для логирования dt в update (с ограничением)
+function M.log_update_dt(dt, throttle_seconds)
+    if not LOG_SETTINGS.UPDATE_DT then
+        return -- Отключено
+    end
+    M.log_with_throttle("update_dt", "[UPDATE DT] dt=" .. string.format("%.3f", dt), throttle_seconds or 1.0)
 end
 
 -- Функция для управления настройками логирования

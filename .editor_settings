@@ -114,20 +114,20 @@
         :scene
       ]
       [
-        "/scripts/board.script"
-        :code
-      ]
-      [
-        "/assets/evo/evo.atlas"
-        :scene
-      ]
-      [
         "/main/token.go"
         :scene
       ]
       [
         "/assets/tile.atlas"
         :scene
+      ]
+      [
+        "/assets/evo/evo.atlas"
+        :scene
+      ]
+      [
+        "/scripts/board.script"
+        :code
       ]
     ]
   }

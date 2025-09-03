@@ -1,4 +1,5 @@
 -- Подключаем модуль эволюционных таблиц
+print("BOARD: Script loading started")
 local evolution_tables = require("scripts.evolution_tables")
 -- Подключаем модуль конфигурации поля
 local field_config = require("scripts.field_config")
@@ -8,6 +9,8 @@ local generator_config = require("scripts.generator_config")
 local Indicator = require("scripts.progress_indicator_module")
 -- Подключаем модуль логирования
 local debug_logger = require("scripts.debug_logger")
+-- Подключаем модуль автоматических генераторов
+local automatic_generator = require("scripts.automatic_generator")
 -- Подключаем утилиты
 local utils = require("scripts.utils")
 
@@ -136,6 +139,7 @@ local function check_sprite_availability(evo_id, level)
 end
 
 function init(self)
+	print("BOARD: init() called - script is loading")
 	msg.post(".", "acquire_input_focus")
 	
 	-- Инициализируем генератор случайных чисел
@@ -144,6 +148,9 @@ function init(self)
 	-- Инициализируем основные структуры данных
 	self.tokens = {}
 	self.cells = {}
+	
+	-- НОВАЯ СИСТЕМА: Автоматические генераторы (ООП)
+	self.automatic_generators = {} -- token_key -> automatic_generator объект
 	
 	-- НОВАЯ СИСТЕМА: Упрощенное состояние перетаскивания
 	self.dragged_token = nil -- ID перетаскиваемой фишки
@@ -166,6 +173,7 @@ function init(self)
 	self.generator_indicators = {} -- таблица индикаторов по ключу "x_y"
 	self.generator_auto_indicators = {} -- таблица индикаторов автоматических генераторов по ключу "x_y"
 	self.generator_icons = {} -- таблица иконок генераторов по ключу "x_y"
+	self.icon_animations = {} -- таблица анимаций иконок генераторов по ключу "x_y"
 
 	-- Загружаем эволюционные таблицы
 	print("BOARD: Loading evolution tables...")
@@ -275,6 +283,7 @@ function init(self)
 end
 
 function create_token_on_board(self, evo_id, level, grid_x, grid_y, initial_z)
+	print("BOARD: create_token_on_board called for " .. evo_id .. " level " .. level .. " at (" .. grid_x .. ", " .. grid_y .. ")")
 	local pos = grid_to_screen(grid_x, grid_y)
 	pos.z = initial_z or 0
 	local properties = { level = level, grid_x = grid_x, grid_y = grid_y }
@@ -292,25 +301,29 @@ function create_token_on_board(self, evo_id, level, grid_x, grid_y, initial_z)
     
     local token_key = utils.get_token_key(grid_x, grid_y)
     local generator = generator_config.get_generator(utils.create_token_string(evo_id, level))
+    
+    -- Создаем базовую структуру токена
+    self.tokens[token_key] = { id = token_id, level = level, evo_id = evo_id }
+    
+    -- Инициализируем ручные генераторы
     if generator and generator.manual then
-        self.tokens[token_key] = {
-            id = token_id,
-            level = level,
-            evo_id = evo_id,
-            current_capacity = generator.manual.capacity,
-            is_reloading = false,
-            reload_start_time = 0,
-            reload_end_time = 0
-        }
+        self.tokens[token_key].current_capacity = generator.manual.capacity
+        self.tokens[token_key].is_reloading = false
+        self.tokens[token_key].reload_start_time = 0
+        self.tokens[token_key].reload_end_time = 0
         
         -- Инициализируем счетчик циклов для одноразовых генераторов для каждого экземпляра отдельно
         if generator_config.is_disposable(utils.create_token_string(evo_id, level)) then
             self.tokens[token_key].completed_cycles = 0
             print("BOARD: Initialized completed_cycles for new disposable generator instance " .. utils.create_token_string(evo_id, level))
         end
-    else
-        self.tokens[token_key] = { id = token_id, level = level, evo_id = evo_id }
     end
+    
+    			-- Инициализируем автоматические генераторы через новую ООП систему
+			if generator and generator.automatic then
+				local generator_id = utils.create_token_string(evo_id, level)
+				self.automatic_generators[token_key] = automatic_generator.create(generator_id, generator.automatic)
+			end
     msg.post(token_id, "set_evo_id", { evo_id = evo_id })
     
     -- 🎨 Если найден специальный спрайт, отправляем сообщение фишке
@@ -332,6 +345,9 @@ end
 
 
 function update(self, dt)
+	-- Отладочная информация dt
+	debug_logger.log_update_dt(dt)
+	
 	-- НОВАЯ СИСТЕМА: Простое следование за курсором
 	if self.is_dragging and self.dragged_token then
 		-- Получаем позицию мыши из последнего события
@@ -383,10 +399,15 @@ function update(self, dt)
 	end
 	
 	-- Обработка автоматических генераторов
-	update_automatic_generators(self, dt)
+	if self.automatic_generators and next(self.automatic_generators) then
+		update_automatic_generators(self, dt)
+	end
 	
 	-- Проверка завершения перезарядки ручных генераторов
 	check_manual_generators_reload(self)
+	
+	-- Проверка приостановленных автоматических генераторов
+	check_and_resume_paused_generators(self)
 	
 	-- Обновление визуала генераторов (индикаторы перезарядки)
 	update_generators_visual(self)
@@ -423,68 +444,80 @@ end
 
 -- Функция обновления автоматических генераторов
 function update_automatic_generators(self, dt)
-	for token_key, token in pairs(self.tokens) do
-		local generator_id = utils.create_token_string(token.evo_id, token.level)
-		local generator = generator_config.get_generator(generator_id)
-		
-		if generator and generator.automatic then
-			-- Проверяем, не перетаскивается ли генератор
-			if not (self.is_dragging and self.dragged_token == token.id) then
-				-- Инициализируем таймеры если их нет
-				if not token.auto_timer then
-					token.auto_timer = 0
-				end
-				if not token.auto_reload_timer then
-					token.auto_reload_timer = 0
-				end
-				if not token.is_auto_reloading then
-					token.is_auto_reloading = false
-				end
-				if not token.auto_capacity then
-					token.auto_capacity = generator.automatic.capacity or 0
-				end
-				
-				if token.is_auto_reloading then
-					-- Генератор на перезарядке
-					token.auto_reload_timer = token.auto_reload_timer + dt
-					if token.auto_reload_timer >= (generator.automatic.reload_sec or 0) then
-						-- Перезарядка завершена
-						token.is_auto_reloading = false
-						token.auto_reload_timer = 0
-						token.auto_capacity = generator.automatic.capacity or 0
-						print("BOARD: Automatic generator " .. generator_id .. " finished reloading")
-					end
-				else
-					-- Генератор готов к работе
-					token.auto_timer = token.auto_timer + dt
-					if token.auto_timer >= (generator.automatic.timer_sec or 0) then
-						-- Время для генерации
-						if token.auto_capacity and token.auto_capacity > 0 then
-							-- Генерируем фишку
-							local output_token, error_msg = generator_config.get_random_automatic_output(generator_id)
-							if output_token then
-								local grid_x, grid_y = utils.parse_token_key(token_key)
-								if grid_x and grid_y then
-									print("BOARD: Automatic generator " .. generator_id .. " generated: " .. output_token)
-									drop_token_from_generator(self, output_token, { x = grid_x, y = grid_y })
-									
-									-- Уменьшаем емкость
-									token.auto_capacity = token.auto_capacity - 1
-									
-									-- Если емкость закончилась, запускаем перезарядку
-									if token.auto_capacity <= 0 and generator.automatic.reload_sec then
-										token.is_auto_reloading = true
-										token.auto_reload_timer = 0
-										print("BOARD: Automatic generator " .. generator_id .. " started reloading")
+	if not self.automatic_generators then
+		return
+	end
+	
+	for token_key, auto_gen in pairs(self.automatic_generators) do
+		if auto_gen and type(auto_gen) == "table" and type(auto_gen.update) == "function" and type(auto_gen.generate_all) == "function" and type(auto_gen.pause) == "function" then
+			local result = auto_gen:update(dt)
+			if result == "generate" then
+				-- Автоматический генератор готов к генерации
+				local token = self.tokens[token_key]
+				if token then
+					local generator_id = utils.create_token_string(token.evo_id, token.level)
+					local output_token, error_msg = generator_config.get_random_automatic_output(generator_id)
+					
+					if output_token then
+						-- Пытаемся сгенерировать фишку
+						local grid_x, grid_y = utils.parse_token_key(token_key)
+						if grid_x and grid_y then
+							-- Проверяем, есть ли место для дропа
+							local adjacent_cells = find_adjacent_empty_cells(self, grid_x, grid_y)
+							if #adjacent_cells > 0 then
+								-- Есть место - генерируем все фишки подряд
+								local generated_count = auto_gen:generate_all()
+								if generated_count > 0 then
+									-- Генерируем фишки одну за другой
+									for i = 1, generated_count do
+										print("BOARD: Automatic generator " .. generator_id .. " generated: " .. output_token .. " (" .. i .. "/" .. generated_count .. ")")
+										drop_token_from_generator(self, output_token, { x = grid_x, y = grid_y }, "automatic")
 									end
+									update_generator_visual(self, generator_id, token_key, token)
 								end
 							else
-								print("BOARD: Automatic generator " .. generator_id .. " failed to generate: " .. (error_msg or "unknown error"))
+								-- Нет места - приостанавливаем генератор
+								auto_gen:pause()
 							end
 						end
-						token.auto_timer = 0
 					end
 				end
+			end
+		elseif auto_gen ~= nil then
+			-- Отладочная информация для понимания проблемы
+			print("BOARD: ERROR - auto_gen is not a proper OOP object in update_automatic_generators for token_key " .. token_key .. ", type: " .. type(auto_gen))
+			if type(auto_gen) == "table" then
+				print("BOARD: ERROR - auto_gen has update: " .. tostring(auto_gen.update) .. " (type: " .. type(auto_gen.update) .. "), generate_all: " .. tostring(auto_gen.generate_all) .. " (type: " .. type(auto_gen.generate_all) .. "), pause: " .. tostring(auto_gen.pause) .. " (type: " .. type(auto_gen.pause) .. ")")
+			end
+		end
+	end
+end
+
+-- Функция для проверки и возобновления приостановленных автоматических генераторов
+function check_and_resume_paused_generators(self)
+	if not self.automatic_generators then
+		return
+	end
+	
+	for token_key, auto_gen in pairs(self.automatic_generators) do
+		if auto_gen and type(auto_gen) == "table" and type(auto_gen.is_paused) == "function" and type(auto_gen.resume) == "function" then
+			-- Проверяем, появилось ли место для дропа
+			local token = self.tokens[token_key]
+			if token then
+				local grid_x, grid_y = utils.parse_token_key(token_key)
+				if grid_x and grid_y then
+					local adjacent_cells = find_adjacent_empty_cells(self, grid_x, grid_y)
+					if #adjacent_cells > 0 then
+						-- Место появилось - возобновляем генератор
+						auto_gen:resume()
+					end
+				end
+			end
+		elseif auto_gen ~= nil then
+			-- Отладочная информация для понимания проблемы
+			print("BOARD: ERROR - auto_gen is not a proper OOP object in check_and_resume_paused_generators for token_key " .. token_key .. ", type: " .. type(auto_gen))
+			if type(auto_gen) == "table" then
+				print("BOARD: ERROR - auto_gen has is_paused: " .. tostring(auto_gen.is_paused) .. " (type: " .. type(auto_gen.is_paused) .. "), resume: " .. tostring(auto_gen.resume) .. " (type: " .. type(auto_gen.resume) .. ")")
 			end
 		end
 	end
@@ -493,10 +526,14 @@ end
 -- Функция обновления анимации иконок генераторов
 function update_icon_animations(self, dt)
 	if not self.icon_animations then
+		debug_logger.log_icon_animation("No icon_animations table")
 		return
 	end
 	
+	local animation_count = 0
 	for token_key, animation in pairs(self.icon_animations) do
+		animation_count = animation_count + 1
+		debug_logger.log_icon_animation("Processing animation for " .. token_key .. " dt=" .. string.format("%.3f", dt))
 		local icon_id = self.generator_icons[token_key]
 		if icon_id and go.exists(icon_id) then
 			-- Обновляем таймер анимации
@@ -561,14 +598,26 @@ function update_icon_animations(self, dt)
 			
 			-- Применяем текущий размер
 			go.set_scale(current_scale, icon_id)
+			
+			-- Отладочная информация (только для первой иконки, чтобы не заспамить лог)
+			if token_key == "4_7" then
+				debug_logger.log_icon_animation("Animation update for " .. token_key .. " phase=" .. animation.phase .. " timer=" .. string.format("%.2f", animation.timer) .. " scale=" .. tostring(current_scale))
+			end
 		else
 			-- Иконка больше не существует, удаляем анимацию
 			self.icon_animations[token_key] = nil
+			debug_logger.log_icon_animation("Removed animation for non-existent icon at " .. token_key)
 		end
+	end
+	
+	-- Отладочная информация (только если есть анимации)
+	if animation_count > 0 then
+		debug_logger.log_icon_animation("Processed " .. animation_count .. " animations")
 	end
 end
 
 function on_message(self, message_id, message, sender)
+	print("BOARD: on_message called with message_id=" .. tostring(message_id))
 	if message_id == hash("cell_clicked") then
 		-- Проверяем, есть ли фишка в этой ячейке
 		local token_key = utils.get_token_key(message.grid_x, message.grid_y)
@@ -806,9 +855,6 @@ function update_generators_visual(self)
 		
 		-- Проверяем, является ли фишка генератором
 		if generator_config.is_generator(generator_id) then
-			local is_reloading = token.is_reloading -- Проверяем только ручные генераторы
-			local is_auto_reloading = token.is_auto_reloading -- Проверяем только автоматические генераторы
-			
 			-- Обновляем визуал для всех генераторов, чтобы правильно обрабатывать завершение перезарядки
 			update_generator_visual(self, generator_id, token_key, token)
 		end
@@ -819,8 +865,22 @@ end
 function update_generator_visual(self, generator_id, token_key, token)
 	local is_reloading = token.is_reloading -- Проверяем только ручные генераторы
 	local reload_progress = get_generator_reload_progress(self, token_key)
-	local is_auto_reloading = token.is_auto_reloading -- Проверяем только автоматические генераторы
-	local auto_reload_progress = get_generator_auto_reload_progress(self, token_key)
+	-- Получаем данные автоматического генератора из новой ООП системы
+	local auto_gen = self.automatic_generators[token_key]
+	local is_auto_reloading = false
+	local auto_reload_progress = 0
+	
+	-- Проверяем, что auto_gen является ООП объектом с нужными методами
+	if auto_gen and type(auto_gen) == "table" and type(auto_gen.is_reloading) == "function" and type(auto_gen.get_reload_progress) == "function" then
+		is_auto_reloading = auto_gen:is_reloading()
+		auto_reload_progress = auto_gen:get_reload_progress()
+	elseif auto_gen ~= nil then
+		-- Отладочная информация для понимания проблемы
+		print("BOARD: ERROR - auto_gen is not a proper OOP object for token_key " .. token_key .. ", type: " .. type(auto_gen))
+		if type(auto_gen) == "table" then
+			print("BOARD: ERROR - auto_gen has is_reloading: " .. tostring(auto_gen.is_reloading) .. " (type: " .. type(auto_gen.is_reloading) .. "), get_reload_progress: " .. tostring(auto_gen.get_reload_progress) .. " (type: " .. type(auto_gen.get_reload_progress) .. ")")
+		end
+	end
 	
 	-- Если генератор перетаскивается, удаляем все индикаторы
 	if self.is_dragging and self.dragged_token == token.id then
@@ -967,14 +1027,6 @@ function activate_generator_token(self, token_key)
     -- Проверяем емкость
     if not token.current_capacity or token.current_capacity <= 0 then return false, "No capacity left" end
     
-    -- Проверяем, не исчерпан ли лимит циклов для одноразового генератора
-    if generator_config.is_disposable(generator_id) then
-        local remaining_cycles = get_remaining_cycles_for_token(self, token_key)
-        if remaining_cycles and remaining_cycles <= 0 then
-            return false, "Disposable generator exhausted"
-        end
-    end
-    
     -- Уменьшаем емкость
     token.current_capacity = token.current_capacity - 1
     
@@ -982,10 +1034,28 @@ function activate_generator_token(self, token_key)
     if generator_config.is_disposable(generator_id) and token.current_capacity <= 0 then
         increment_cycle_count_for_token(self, token_key)
         print("BOARD: Completed cycle for disposable generator instance " .. generator_id .. " (cycle " .. (token.completed_cycles or 0) .. "/" .. (generator.dispose_after or 0) .. ")")
+        
+        -- Проверяем, не исчерпан ли лимит циклов после увеличения счетчика
+        local remaining_cycles = get_remaining_cycles_for_token(self, token_key)
+        if remaining_cycles and remaining_cycles <= 0 then
+            print("BOARD: Disposable generator exhausted after cycle completion")
+            return true -- Возвращаем true, чтобы активация считалась успешной, но генератор будет уничтожен
+        end
     end
     
-    -- Если емкость закончилась, запускаем перезарядку
+    -- Если емкость закончилась, запускаем перезарядку только если генератор не исчерпан
     if token.current_capacity <= 0 and generator.manual.reload_sec then
+        -- Для одноразовых генераторов проверяем, не исчерпан ли лимит циклов
+        if generator_config.is_disposable(generator_id) then
+            local remaining_cycles = get_remaining_cycles_for_token(self, token_key)
+            if remaining_cycles and remaining_cycles <= 0 then
+                -- Генератор исчерпан, не запускаем перезарядку
+                print("BOARD: Disposable generator exhausted, skipping reload")
+                return true
+            end
+        end
+        
+        -- Запускаем перезарядку
         token.is_reloading = true
         token.reload_start_time = os.clock()
         token.reload_end_time = token.reload_start_time + generator.manual.reload_sec
@@ -1023,19 +1093,40 @@ function is_generator_reloading(self, token_key)
         return true
     end
     
-    -- Проверяем автоматические генераторы
-    if token.is_auto_reloading then
-        if token.auto_reload_timer and token.auto_reload_timer >= (generator_config.get_generator(utils.create_token_string(token.evo_id, token.level)) and generator_config.get_generator(utils.create_token_string(token.evo_id, token.level)).automatic and generator_config.get_generator(utils.create_token_string(token.evo_id, token.level)).automatic.reload_sec or 0) then
-            token.is_auto_reloading = false
-            token.auto_reload_timer = 0
+    -- Автоматические генераторы теперь обрабатываются через ООП систему
+    -- Эта функция работает только с ручными генераторами
+    
+    return false
+end
+
+-- Функция для проверки состояния только ручного генератора
+function is_manual_generator_reloading(self, token_key)
+    local token = self.tokens[token_key]
+    if not token then return false end
+    
+    -- Проверяем только ручные генераторы
+    if token.is_reloading then
+        if os.clock() >= token.reload_end_time then
+            token.is_reloading = false
             local generator = generator_config.get_generator(utils.create_token_string(token.evo_id, token.level))
-            if generator and generator.automatic then
-                token.auto_capacity = generator.automatic.capacity or 0
+            if generator and generator.manual then
+                token.current_capacity = generator.manual.capacity
+                
+                -- Проверяем, не исчерпан ли лимит циклов для одноразового генератора
+                if generator_config.is_disposable(utils.create_token_string(token.evo_id, token.level)) then
+                    local remaining_cycles = get_remaining_cycles_for_token(self, token_key)
+                    if remaining_cycles and remaining_cycles <= 0 then
+                        print("BOARD: Disposable generator exhausted after reload, disposing now")
+                        -- Если генератор исчерпан, сразу уничтожаем его
+                        handle_disposable_generator_disposal(self, token_key)
+                    end
+                end
             end
+            
+            -- Обновляем иконки генераторов после завершения перезарядки
             update_generator_icons(self)
-        else
-            return true
         end
+        return true
     end
     
     return false
@@ -1065,17 +1156,16 @@ function get_generator_reload_progress(self, token_key)
 end
 
 function get_generator_auto_reload_progress(self, token_key)
-    local token = self.tokens[token_key]
-    if not token then return 1.0 end
-    
-    -- Проверяем автоматические генераторы
-    if token.is_auto_reloading then
-        local generator = generator_config.get_generator(utils.create_token_string(token.evo_id, token.level))
-        if not generator or not generator.automatic then return 1.0 end
-        local total = generator.automatic.reload_sec or 0
-        if total <= 0 then return 1.0 end
-        local elapsed = token.auto_reload_timer or 0
-        return math.min(elapsed / total, 1.0)
+    -- Получаем данные из новой ООП системы
+    local auto_gen = self.automatic_generators[token_key]
+    if auto_gen and type(auto_gen) == "table" and type(auto_gen.get_reload_progress) == "function" then
+        return auto_gen:get_reload_progress()
+    elseif auto_gen ~= nil then
+        -- Отладочная информация для понимания проблемы
+        print("BOARD: ERROR - auto_gen is not a proper OOP object in get_generator_auto_reload_progress for token_key " .. token_key .. ", type: " .. type(auto_gen))
+        if type(auto_gen) == "table" then
+            print("BOARD: ERROR - auto_gen has get_reload_progress: " .. tostring(auto_gen.get_reload_progress) .. " (type: " .. type(auto_gen.get_reload_progress) .. ")")
+        end
     end
     
     return 1.0
@@ -1090,12 +1180,26 @@ function activate_generator(self, token_key, cell)
     end
     
     local token = self.tokens[token_key]
+    if not token then
+        print("BOARD: Token was removed during activation")
+        return
+    end
+    
     local generator_id = utils.create_token_string(token.evo_id, token.level)
+    
+    -- Проверяем, не исчерпан ли генератор после активации
+    if should_dispose_token(self, token_key) then
+        print("BOARD: Generator " .. generator_id .. " is exhausted, skipping generation")
+        handle_disposable_generator_disposal(self, token_key)
+        update_generator_icons(self)
+        return
+    end
+    
     local output_token, error_msg = generator_config.get_random_manual_output(generator_id)
     
     if output_token then
         print("BOARD: Generator " .. generator_id .. " generated: " .. output_token)
-        drop_token_from_generator(self, output_token, cell)
+        drop_token_from_generator(self, output_token, cell, "manual")
         update_generator_visual(self, generator_id, token_key, token)
     else
         print("BOARD: Generator " .. generator_id .. " failed to generate: " .. (error_msg or "unknown error"))
@@ -1104,14 +1208,24 @@ function activate_generator(self, token_key, cell)
     -- Проверяем, нужно ли уничтожить одноразовый генератор
     if should_dispose_token(self, token_key) then
         handle_disposable_generator_disposal(self, token_key)
+        -- После уничтожения генератора обновляем иконки
+        update_generator_icons(self)
+    else
+        -- Обновляем иконки генераторов после активации (только если генератор не был уничтожен)
+        update_generator_icons(self)
     end
-    
-    -- Обновляем иконки генераторов после активации
-    update_generator_icons(self)
 end
 
 -- Функция выброса фишки из генератора
-function drop_token_from_generator(self, token_string, generator_cell)
+-- ВАЖНО: Тип дропа определяется НЕ типом генератора, а типом активации!
+-- - Ручная активация (drop_type = "manual") → обычный дроп (любая свободная клетка)
+-- - Автоматическая активация (drop_type = "automatic") → ближний дроп (только соседние клетки)
+-- 
+-- Одна фишка может содержать ОБА типа генераторов одновременно:
+-- - Ручной генератор использует обычный дроп
+-- - Автоматический генератор на той же фишке использует ближний дроп
+-- Они работают совершенно независимо друг от друга!
+function drop_token_from_generator(self, token_string, generator_cell, drop_type)
 	-- Парсим строку токена
 	local evo_id, level = utils.parse_token_string(token_string)
 	if not evo_id or not level then
@@ -1132,10 +1246,9 @@ function drop_token_from_generator(self, token_string, generator_cell)
 		
 		print("BOARD: Drop from generator " .. source_generator_id .. " at (" .. generator_cell.x .. ", " .. generator_cell.y .. ")")
 		
-		-- Проверяем, является ли генератор автоматическим (имеет автоматическую конфигурацию с емкостью и таймером)
-		if source_generator and source_generator.automatic and 
-		   source_generator.automatic.capacity and source_generator.automatic.capacity > 0 and
-		   source_generator.automatic.timer_sec and source_generator.automatic.timer_sec > 0 then
+		-- Определяем тип дропа на основе переданного параметра
+		-- НЕ на основе конфигурации генератора!
+		if drop_type == "automatic" then
 			-- Автоматические генераторы используют ближний дроп
 			print("BOARD: Using nearest drop for automatic generator")
 			local adjacent_cells = find_adjacent_empty_cells(self, generator_cell.x, generator_cell.y)
@@ -1275,7 +1388,7 @@ function perform_merge(self, target_cell, target_token, target_key)
 		-- Обновляем визуал новой фишки
 		local new_generator_id = utils.create_token_string(merge_result.evo_id, merge_result.level)
 		if generator_config.is_generator(new_generator_id) then
-			local new_token = self.tokens[token_key]
+			new_token = self.tokens[token_key]
 			update_generator_visual(self, new_generator_id, token_key, new_token)
 			print("BOARD: Updated indicator for merged generator " .. new_generator_id)
 		end
@@ -1318,9 +1431,19 @@ function perform_move(self, target_cell)
     self.tokens[target_key].level = self.dragged_level
     self.tokens[target_key].evo_id = self.dragged_evo_id
     if old_key ~= target_key then
+        -- Перемещаем ООП объект автоматического генератора
+        if self.automatic_generators[old_key] then
+            self.automatic_generators[target_key] = self.automatic_generators[old_key]
+            self.automatic_generators[old_key] = nil
+            print("BOARD: Moved automatic generator OOP object from " .. old_key .. " to " .. target_key)
+        end
+        
         -- Очищаем иконку генератора со старой позиции если была
         hide_generator_icon(self, self.dragged_from.x, self.dragged_from.y)
         self.tokens[old_key] = nil
+        
+        -- Проверяем, не нужно ли возобновить приостановленные генераторы
+        check_and_resume_paused_generators(self)
     end
 
     msg.post(self.dragged_token, "set_grid_position", { grid_x = target_cell.x, grid_y = target_cell.y })
@@ -1380,9 +1503,19 @@ function perform_return(self)
 	self.tokens[original_key].level = self.dragged_level
 	self.tokens[original_key].evo_id = self.dragged_evo_id
 	if current_key ~= original_key then
+		-- Перемещаем ООП объект автоматического генератора обратно
+		if self.automatic_generators[current_key] then
+			self.automatic_generators[original_key] = self.automatic_generators[current_key]
+			self.automatic_generators[current_key] = nil
+			print("BOARD: Returned automatic generator OOP object from " .. current_key .. " to " .. original_key)
+		end
+		
 		-- Очищаем иконку генератора с текущей позиции если была
 		hide_generator_icon(self, self.dragged_from.x, self.dragged_from.y)
 		self.tokens[current_key] = nil
+		
+		-- Проверяем, не нужно ли возобновить приостановленные генераторы
+		check_and_resume_paused_generators(self)
 	end
 	
 	-- Если возвращаемый токен является генератором, восстанавливаем его индикатор
@@ -1525,13 +1658,9 @@ function initialize_generators(self)
 					end
 				end
 				
-				-- Инициализируем автоматические генераторы
+				-- Инициализируем автоматические генераторы через новую ООП систему
 				if generator.automatic then
-					token.auto_capacity = generator.automatic.capacity or 0
-					token.auto_timer = 0
-					token.auto_reload_timer = 0
-					token.is_auto_reloading = false
-					print("BOARD: Initialized automatic generator " .. generator_id .. " with capacity " .. (generator.automatic.capacity or 0))
+					self.automatic_generators[token_key] = automatic_generator.create(generator_id, generator.automatic)
 				end
 			end
 		end
@@ -1541,6 +1670,8 @@ function initialize_generators(self)
 	
 	-- Обновляем иконки генераторов после инициализации
 	update_generator_icons(self)
+	
+	print("BOARD: init() completed successfully")
 end
 
 -- Функция завершения работы (очистка ресурсов)
@@ -1600,9 +1731,10 @@ function show_generator_icon(self, grid_x, grid_y)
 				animation_duration = 0.2,
 				pause_duration = 5.0
 			}
+			debug_logger.log_icon_animation("Created animation for generator icon at " .. token_key)
 		end
 		
-		print("BOARD: Created generator icon at grid(" .. grid_x .. ", " .. grid_y .. ") pos=" .. tostring(icon_pos) .. " id=" .. tostring(icon_id))
+		debug_logger.log_icon_animation("Created generator icon at grid(" .. grid_x .. ", " .. grid_y .. ") pos=" .. tostring(icon_pos) .. " id=" .. tostring(icon_id))
 	end
 end
 
@@ -1630,6 +1762,11 @@ function update_generator_icons(self)
 		for token_key, animation in pairs(self.icon_animations) do
 			saved_animations[token_key] = animation
 		end
+		local count = 0
+		for k, v in pairs(saved_animations) do count = count + 1 end
+		print("BOARD: update_generator_icons - saved " .. count .. " animations")
+	else
+		print("BOARD: update_generator_icons - no existing animations to save")
 	end
 	
 	-- Сначала очищаем все существующие иконки
@@ -1642,6 +1779,13 @@ function update_generator_icons(self)
 	
 	-- Восстанавливаем состояние анимации
 	self.icon_animations = saved_animations
+	local restored_count = 0
+	if self.icon_animations then
+		for token_key, animation in pairs(self.icon_animations) do
+			restored_count = restored_count + 1
+		end
+	end
+	print("BOARD: update_generator_icons - restored " .. restored_count .. " animations")
 	
 	-- Теперь создаем иконки только для готовых генераторов
 	for token_key, token in pairs(self.tokens) do
@@ -1654,14 +1798,14 @@ function update_generator_icons(self)
 			if generator and generator.manual then
 				local grid_x, grid_y = utils.parse_token_key(token_key)
 				if grid_x and grid_y then
-					local is_reloading = is_generator_reloading(self, token_key)
+					local is_manual_reloading = is_manual_generator_reloading(self, token_key)
 					local is_dragging = self.is_dragging and self.dragged_token == token.id
 					
 					-- Проверяем емкость генератора
 					local current_capacity = token.current_capacity or generator.manual.capacity
 					
-					-- Показываем иконку только если генератор готов и не перетаскивается
-					if not is_reloading and not is_dragging and current_capacity and current_capacity > 0 then
+					-- Показываем иконку только если ручной генератор готов и не перетаскивается
+					if not is_manual_reloading and not is_dragging and current_capacity and current_capacity > 0 then
 						show_generator_icon(self, grid_x, grid_y)
 					end
 				end
@@ -1698,12 +1842,22 @@ function handle_disposable_generator_disposal(self, token_key)
         go.delete(token.id)
     end
     
+    -- Проверяем, не нужно ли возобновить приостановленные генераторы ПЕРЕД удалением токена
+    check_and_resume_paused_generators(self)
+    
     -- Удаляем из списка токенов
     self.tokens[token_key] = nil
+    
+    -- Удаляем автоматический генератор из новой ООП системы
+    self.automatic_generators[token_key] = nil
     
     -- Очищаем иконки и индикаторы генератора
     hide_generator_icon(self, grid_x, grid_y)
     remove_generator_indicator(self, token_key)
+    remove_generator_auto_indicator(self, token_key)
+    
+    -- Принудительно обновляем визуал после удаления генератора
+    update_generator_icons(self)
     
     -- Проверяем, нужно ли создать новую фишку
     local dispose_to = generator_config.get_dispose_to(generator_id)
@@ -1779,4 +1933,6 @@ function should_dispose_token(self, token_key)
     local completed_cycles = token.completed_cycles or 0
     return completed_cycles >= generator.dispose_after
 end
+
+print("BOARD: Script loading completed")
 

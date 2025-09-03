@@ -28,4 +28,34 @@ images {
 images {
   image: "/assets/token.png"
 }
+images {
+  image: "/assets/evo/P_PIN-1.png"
+}
+images {
+  image: "/assets/evo/P_PIN-2.png"
+}
+images {
+  image: "/assets/evo/P_PIN-3.png"
+}
+images {
+  image: "/assets/evo/P_PIN-4.png"
+}
+images {
+  image: "/assets/evo/P_PIN-5.png"
+}
+images {
+  image: "/assets/evo/P_PIN-6.png"
+}
+images {
+  image: "/assets/evo/P_PIN-7.png"
+}
+images {
+  image: "/assets/evo/P_PIN-8.png"
+}
+images {
+  image: "/assets/evo/P_PIN-9.png"
+}
+images {
+  image: "/assets/evo/P_PIN-10.png"
+}
 extrude_borders: 2
