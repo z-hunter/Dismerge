@@ -449,7 +449,12 @@ function update_automatic_generators(self, dt)
 	end
 	
 	for token_key, auto_gen in pairs(self.automatic_generators) do
-		if auto_gen and type(auto_gen) == "table" and type(auto_gen.update) == "function" and type(auto_gen.generate_all) == "function" and type(auto_gen.pause) == "function" then
+		if auto_gen and type(auto_gen) == "table" and type(auto_gen.update) == "function" and type(auto_gen.pause) == "function" then
+			-- Пропускаем замороженные генераторы - они обрабатываются в check_and_resume_paused_generators
+			if auto_gen:is_paused() then
+				return
+			end
+			
 			local result = auto_gen:update(dt)
 			if result == "generate" then
 				-- Автоматический генератор готов к генерации
@@ -465,18 +470,16 @@ function update_automatic_generators(self, dt)
 							-- Проверяем, есть ли место для дропа
 							local adjacent_cells = find_adjacent_empty_cells(self, grid_x, grid_y)
 							if #adjacent_cells > 0 then
-								-- Есть место - генерируем все фишки подряд
-								local generated_count = auto_gen:generate_all()
-								if generated_count > 0 then
-									-- Генерируем фишки одну за другой
-									for i = 1, generated_count do
-										print("BOARD: Automatic generator " .. generator_id .. " generated: " .. output_token .. " (" .. i .. "/" .. generated_count .. ")")
-										drop_token_from_generator(self, output_token, { x = grid_x, y = grid_y }, "automatic")
-									end
+								-- Есть место - пытаемся сгенерировать одну фишку
+								if auto_gen:try_generate() then
+									print("BOARD: Automatic generator " .. generator_id .. " generated: " .. output_token)
+									drop_token_from_generator(self, output_token, { x = grid_x, y = grid_y }, "automatic")
 									update_generator_visual(self, generator_id, token_key, token)
+									-- Сбрасываем таймер после успешной генерации
+									auto_gen.timer = 0
 								end
 							else
-								-- Нет места - приостанавливаем генератор
+								-- Нет места - приостанавливаем генератор (таймер останавливается)
 								auto_gen:pause()
 							end
 						end
@@ -487,7 +490,7 @@ function update_automatic_generators(self, dt)
 			-- Отладочная информация для понимания проблемы
 			print("BOARD: ERROR - auto_gen is not a proper OOP object in update_automatic_generators for token_key " .. token_key .. ", type: " .. type(auto_gen))
 			if type(auto_gen) == "table" then
-				print("BOARD: ERROR - auto_gen has update: " .. tostring(auto_gen.update) .. " (type: " .. type(auto_gen.update) .. "), generate_all: " .. tostring(auto_gen.generate_all) .. " (type: " .. type(auto_gen.generate_all) .. "), pause: " .. tostring(auto_gen.pause) .. " (type: " .. type(auto_gen.pause) .. ")")
+				print("BOARD: ERROR - auto_gen has update: " .. tostring(auto_gen.update) .. " (type: " .. type(auto_gen.update) .. "), pause: " .. tostring(auto_gen.pause) .. " (type: " .. type(auto_gen.pause) .. ")")
 			end
 		end
 	end
@@ -501,15 +504,34 @@ function check_and_resume_paused_generators(self)
 	
 	for token_key, auto_gen in pairs(self.automatic_generators) do
 		if auto_gen and type(auto_gen) == "table" and type(auto_gen.is_paused) == "function" and type(auto_gen.resume) == "function" then
-			-- Проверяем, появилось ли место для дропа
-			local token = self.tokens[token_key]
-			if token then
-				local grid_x, grid_y = utils.parse_token_key(token_key)
-				if grid_x and grid_y then
-					local adjacent_cells = find_adjacent_empty_cells(self, grid_x, grid_y)
-					if #adjacent_cells > 0 then
-						-- Место появилось - возобновляем генератор
-						auto_gen:resume()
+			-- Обрабатываем только замороженные генераторы
+			if auto_gen:is_paused() then
+				-- Проверяем, появилось ли место для дропа
+				local token = self.tokens[token_key]
+				if token then
+					local grid_x, grid_y = utils.parse_token_key(token_key)
+					if grid_x and grid_y then
+						local adjacent_cells = find_adjacent_empty_cells(self, grid_x, grid_y)
+						if #adjacent_cells > 0 then
+							-- Место появилось - возобновляем генератор
+							auto_gen:resume()
+							
+							-- Генератор был заморожен в состоянии готовности к генерации
+							-- Теперь, когда место появилось, он должен сразу сгенерировать фишку
+							local generator_id = utils.create_token_string(token.evo_id, token.level)
+							local output_token, error_msg = generator_config.get_random_automatic_output(generator_id)
+							
+							if output_token then
+								-- Пытаемся сгенерировать фишку
+								if auto_gen:try_generate() then
+									print("BOARD: Automatic generator " .. generator_id .. " generated: " .. output_token .. " (after resume)")
+									drop_token_from_generator(self, output_token, { x = grid_x, y = grid_y }, "automatic")
+									update_generator_visual(self, generator_id, token_key, token)
+									-- Сбрасываем таймер после успешной генерации
+									auto_gen.timer = 0
+								end
+							end
+						end
 					end
 				end
 			end

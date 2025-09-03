@@ -26,7 +26,6 @@ function automatic_generator.create(generator_id, config)
     -- Добавляем методы к объекту
     self.update = automatic_generator.update
     self.try_generate = automatic_generator.try_generate
-    self.generate_all = automatic_generator.generate_all
     self.pause = automatic_generator.pause
     self.resume = automatic_generator.resume
     self.get_reload_progress = automatic_generator.get_reload_progress
@@ -57,12 +56,15 @@ function automatic_generator.update(self, dt)
         end
     else
         -- Генератор готов к работе
-        if not self._is_paused and self.capacity > 0 then
-            self.timer = self.timer + dt
-            
-            if self.timer >= (self.config.timer_sec or 0) then
-                -- Время для генерации
-                return "generate"
+        if self.capacity > 0 then
+            -- Таймер работает только если генератор не заморожен
+            if not self._is_paused then
+                self.timer = self.timer + dt
+                
+                if self.timer >= (self.config.timer_sec or 0) then
+                    -- Время для генерации
+                    return "generate"
+                end
             end
         end
     end
@@ -84,8 +86,7 @@ function automatic_generator.try_generate(self)
             print("AUTO_GEN: " .. self.generator_id .. " started reloading")
         end
         
-        -- НЕ сбрасываем таймер - генератор должен продолжить генерировать
-        self._is_paused = false
+        -- Таймер будет сброшен в board.script после успешной генерации фишки
         
         return true
     end
@@ -93,26 +94,7 @@ function automatic_generator.try_generate(self)
     return false
 end
 
--- Генерация всех фишек подряд до исчерпания емкости
-function automatic_generator.generate_all(self)
-    local generated_count = 0
-    
-    while self.capacity > 0 do
-        if self:try_generate() then
-            generated_count = generated_count + 1
-        else
-            break
-        end
-    end
-    
-    -- Только после генерации всех фишек сбрасываем таймер
-    if generated_count > 0 then
-        self.timer = 0
-        print("AUTO_GEN: " .. self.generator_id .. " generated " .. generated_count .. " tokens, capacity now: " .. self.capacity)
-    end
-    
-    return generated_count
-end
+
 
 -- Приостановка генератора (нет места для дропа)
 function automatic_generator.pause(self)
