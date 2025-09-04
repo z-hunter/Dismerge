@@ -86,10 +86,17 @@ function token.update(self, dt)
     if self.manual_generator and self.manual_generator.is_reloading then
         local current_time = os.clock()
         if current_time >= self.manual_generator.reload_end_time then
+            -- Восстанавливаем емкость после перезарядки
+            local generator_id = utils.create_token_string(self.evo_id, self.level)
+            local generator = generator_config.get_generator(generator_id)
+            if generator and generator.manual then
+                self.manual_generator.current_capacity = generator.manual.capacity or 0
+            end
+            
             self.manual_generator.is_reloading = false
             self.manual_generator.reload_start_time = 0
             self.manual_generator.reload_end_time = 0
-            print("TOKEN: Manual generator " .. utils.create_token_string(self.evo_id, self.level) .. " finished reloading")
+            print("TOKEN: Manual generator " .. generator_id .. " finished reloading, restored capacity to " .. (self.manual_generator.current_capacity or 0))
         end
     end
 end
