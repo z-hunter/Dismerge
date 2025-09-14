@@ -2,10 +2,6 @@
   :workflow {
     :recent-files [
       [
-        "/test/simple_indicator.collection"
-        :scene
-      ]
-      [
         "/test/modular_indicator_test.script"
         :code
       ]
@@ -127,6 +123,10 @@
       ]
       [
         "/scripts/board.script"
+        :code
+      ]
+      [
+        "/scripts/automatic_generator.lua"
         :code
       ]
     ]

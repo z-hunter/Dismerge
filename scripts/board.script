@@ -1,5 +1,4 @@
 -- Подключаем модуль эволюционных таблиц
-print("BOARD: Script loading started")
 local evolution_tables = require("scripts.evolution_tables")
 -- Подключаем модуль конфигурации поля
 local field_config = require("scripts.field_config")

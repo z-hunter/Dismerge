@@ -272,19 +272,6 @@ end
 
 -- Очистка ресурсов
 function token.cleanup(self)
-    -- Удаляем визуальные компоненты
-    if self.generator_icon_id and go.exists(self.generator_icon_id) then
-        go.delete(self.generator_icon_id)
-    end
-    
-    if self.indicator_id and go.exists(self.indicator_id) then
-        go.delete(self.indicator_id)
-    end
-    
-    if self.auto_indicator_id and go.exists(self.auto_indicator_id) then
-        go.delete(self.auto_indicator_id)
-    end
-    
     -- Очищаем компоненты
     self.automatic_generator = nil
     self.manual_generator = nil
