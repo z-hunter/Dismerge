@@ -58,7 +58,10 @@ function update(self, dt)
 			if vmath.length(movement) > distance then
 				movement = direction
 			end
-			go.set_position(current_pos + movement, ".")
+			local new_pos = current_pos + movement
+			-- Сохраняем Z-координату из move_target
+			new_pos.z = self.move_target.z
+			go.set_position(new_pos, ".")
 		else
 			-- Достигли цели
 			go.set_position(self.move_target, ".")
@@ -99,13 +102,13 @@ function on_message(self, message_id, message, sender)
 		
 	elseif message_id == hash("set_position") then
 		-- НОВАЯ СИСТЕМА: Принудительная установка позиции (для следования за курсором)
+		-- Используем Z-координату из сообщения (устанавливается в board.script)
 		go.set_position(message.position, ".")
-		if message.position and message.position.z and message.position.z > 0 then
-			print("DEBUG: TOKEN SET_POSITION Z = " .. tostring(message.position.z) .. " at pos (" .. tostring(message.position.x) .. ", " .. tostring(message.position.y) .. ")")
-		end
+		print("DEBUG: TOKEN SET_POSITION - Input Z=" .. tostring(message.position.z) .. ", Final Z=" .. tostring(message.position.z) .. " at pos (" .. tostring(message.position.x) .. ", " .. tostring(message.position.y) .. ")")
 		
 	elseif message_id == hash("move_to") then
 		-- НОВАЯ СИСТЕМА: Плавное движение к цели
+		-- Используем Z-координату из сообщения (устанавливается в board.script)
 		if message.smooth then
 			self.move_target = message.position
 		else

@@ -237,8 +237,8 @@ function init(self)
 				(y - 1) * CELL_SIZE - half_height + FIX_Y,
 				-0.5  -- Ячейки поля дальше от камеры
 			)
-			local id = factory.create("#cell_factory", pos, nil, { grid_x = x, grid_y = y }, 1)
-			print("DEBUG: CREATE_CELL - pos.z=" .. tostring(pos.z) .. ", factory Z=1, final Z=" .. tostring(pos.z + 1))
+			local id = factory.create("#cell_factory", pos, nil, { grid_x = x, grid_y = y }, 0)
+			print("DEBUG: CREATE_CELL - pos.z=" .. tostring(pos.z) .. ", factory Z=0, final Z=" .. tostring(pos.z + 0))
 			self.cells[x][y] = { id = id }
 			
 			-- Устанавливаем случайный тайл для ячейки в шахматном порядке
@@ -288,14 +288,14 @@ end
 function create_token_on_board(self, evo_id, level, grid_x, grid_y)
 	print("BOARD: create_token_on_board called for " .. evo_id .. " level " .. level .. " at (" .. grid_x .. ", " .. grid_y .. ")")
 	local pos = grid_to_screen(grid_x, grid_y)
-	-- Z-координата устанавливается в token.go (z: 1.0)
+	pos.z = 0  -- Z=0 для фишек на поле (final Z = 0 + 0 + 1 = 1)
 	local properties = { level = level, grid_x = grid_x, grid_y = grid_y }
 	
 	-- 🎨 Проверяем наличие атласа и спрайта для этой фишки
 	local has_sprite, atlas_id, sprite_name = check_sprite_availability(evo_id, level)
 	
-	local token_id = factory.create("#token_factory", pos, nil, properties)  -- Z устанавливается в token.go
-	print("DEBUG: CREATE_TOKEN - pos.z=" .. tostring(pos.z) .. ", token.go Z=1, final Z=1")
+	local token_id = factory.create("#token_factory", pos, nil, properties, 1)  -- Factory Z=1
+	print("DEBUG: CREATE_TOKEN - pos.z=" .. tostring(pos.z) .. ", factory Z=1, final Z=1")
     
     -- Проверяем, что токен был создан успешно
     if not token_id then

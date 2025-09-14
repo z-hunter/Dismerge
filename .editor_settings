@@ -2,10 +2,6 @@
   :workflow {
     :recent-files [
       [
-        "/test/modular_indicator_test.script"
-        :code
-      ]
-      [
         "/test/simple_test.script"
         :code
       ]
@@ -94,10 +90,6 @@
         :code
       ]
       [
-        "/main/cell.go"
-        :scene
-      ]
-      [
         "/main/cell_factory.factory"
         :cljfx-form-view
       ]
@@ -107,10 +99,6 @@
       ]
       [
         "/assets/GEN_P.atlas"
-        :scene
-      ]
-      [
-        "/main/token.go"
         :scene
       ]
       [
@@ -128,6 +116,18 @@
       [
         "/scripts/automatic_generator.lua"
         :code
+      ]
+      [
+        "/main/token_factory.factory"
+        :cljfx-form-view
+      ]
+      [
+        "/main/token.go"
+        :scene
+      ]
+      [
+        "/main/cell.go"
+        :scene
       ]
     ]
   }
