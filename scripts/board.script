@@ -23,6 +23,9 @@ local GRID_HEIGHT = 9
 local FIX_X = 300
 local FIX_Y = 300
 
+-- Z-координаты для разных типов объектов
+local DRAGGED_TOKEN_Z = 0.5  -- Z для перетаскиваемых фишек (поверх фишек на поле)
+
 -- получить позицию ячейки по координатам сетки
 local function grid_to_screen(gx, gy)
 	local half_width = (GRID_WIDTH - 1) * CELL_SIZE / 2
@@ -285,14 +288,14 @@ end
 function create_token_on_board(self, evo_id, level, grid_x, grid_y)
 	print("BOARD: create_token_on_board called for " .. evo_id .. " level " .. level .. " at (" .. grid_x .. ", " .. grid_y .. ")")
 	local pos = grid_to_screen(grid_x, grid_y)
-	pos.z = 0  -- Все фишки на поле имеют Z=0 (final Z=1 с factory Z=1)
+	-- Z-координата устанавливается в token.go (z: 1.0)
 	local properties = { level = level, grid_x = grid_x, grid_y = grid_y }
 	
 	-- 🎨 Проверяем наличие атласа и спрайта для этой фишки
 	local has_sprite, atlas_id, sprite_name = check_sprite_availability(evo_id, level)
 	
-	local token_id = factory.create("#token_factory", pos, nil, properties, 1)  -- Z=1 для всех фишек на поле
-	print("DEBUG: CREATE_TOKEN - pos.z=" .. tostring(pos.z) .. ", factory Z=1, final Z=" .. tostring(pos.z + 1))
+	local token_id = factory.create("#token_factory", pos, nil, properties)  -- Z устанавливается в token.go
+	print("DEBUG: CREATE_TOKEN - pos.z=" .. tostring(pos.z) .. ", token.go Z=1, final Z=1")
     
     -- Проверяем, что токен был создан успешно
     if not token_id then
@@ -339,7 +342,7 @@ function update(self, dt)
 	if self.is_dragging and self.dragged_token then
 		-- Получаем позицию мыши из последнего события
 		if self.last_mouse_pos then
-			local target_pos = vmath.vector3(self.last_mouse_pos.x, self.last_mouse_pos.y, 1)  -- Z=1 для перетаскиваемых фишек
+			local target_pos = vmath.vector3(self.last_mouse_pos.x, self.last_mouse_pos.y, DRAGGED_TOKEN_Z)  -- Z для перетаскиваемых фишек
 			msg.post(self.dragged_token, "set_position", { position = target_pos })
 			
 			-- Отладочный вывод Z-координат всех фишек на поле
@@ -380,13 +383,13 @@ function update(self, dt)
 				
 				if progress >= 1.0 then
 					-- Анимация завершена - перемещаем фишку на финальную позицию
-					local end_pos = vmath.vector3(anim.end_pos.x, anim.end_pos.y, 0)  -- Z=0 для фишек на поле (как в create_token_on_board)
+					local end_pos = vmath.vector3(anim.end_pos.x, anim.end_pos.y, 0)  -- Z устанавливается в token.go
 					msg.post(anim.token_id, "set_position", { position = end_pos })
 					table.remove(self.animating_tokens, i)
 				else
 					-- Обновляем позицию
 					local current_pos = anim.start_pos + (anim.end_pos - anim.start_pos) * progress
-					current_pos.z = 0  -- Z=0 для фишек на поле (как в create_token_on_board)
+					current_pos.z = 0  -- Z устанавливается в token.go
 					msg.post(anim.token_id, "set_position", { position = current_pos })
 					i = i + 1
 				end
@@ -1250,11 +1253,11 @@ function create_drop_animation(self, token_id, from_cell, to_cell)
 	
 	-- Начальная позиция (у генератора)
 	local start_pos = grid_to_screen(from_cell.x, from_cell.y)
-	start_pos.z = 0  -- Z=0 для фишек на поле (как в create_token_on_board)
+	start_pos.z = 0  -- Z устанавливается в token.go
 	
 	-- Конечная позиция (целевая клетка)
 	local end_pos = grid_to_screen(to_cell.x, to_cell.y)
-	end_pos.z = 0  -- Z=0 для фишек на поле (как в create_token_on_board)
+	end_pos.z = 0  -- Z устанавливается в token.go
 	
 	-- Анимация полета
 	local duration = 0.17 -- секунды (ускорено в 3 раза)
@@ -1361,7 +1364,7 @@ end
 -- НОВАЯ СИСТЕМА: Функция выполнения перемещения
 function perform_move(self, target_cell)
     local pos = grid_to_screen(target_cell.x, target_cell.y)
-    pos.z = 0  -- Устанавливаем Z=0 для всех фишек на поле
+    pos.z = 0  -- Z устанавливается в token.go
     msg.post(self.dragged_token, "move_to", { position = pos, smooth = true })
 
     local target_key = utils.get_token_key(target_cell.x, target_cell.y)
@@ -1425,7 +1428,7 @@ end
 function perform_return(self)
 	-- Возвращаем фишку на исходную позицию
 	local pos = grid_to_screen(self.dragged_from.x, self.dragged_from.y)
-	pos.z = 0  -- Устанавливаем Z=0 для всех фишек на поле
+	pos.z = 0  -- Z устанавливается в token.go
 	msg.post(self.dragged_token, "move_to", { position = pos, smooth = true })
 	
 	-- Восстанавливаем данные
@@ -1620,7 +1623,7 @@ function show_generator_icon(self, grid_x, grid_y)
 		local icon_pos = vmath.vector3(
 			cell_pos.x + 20,  -- Смещение вправо от центра клетки
 			cell_pos.y - 20,  -- Смещение вниз от центра клетки
-			cell_pos.z + 0.5  -- Выше клетки для видимости
+			0.1  -- Z=0.1 для иконок генераторов (поверх фишек с Z=0)
 		)
 		
 		local icon_id = factory.create("#generator_icon_factory", icon_pos)
