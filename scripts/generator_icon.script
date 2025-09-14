@@ -1,6 +1,9 @@
 -- Скрипт для иконки генератора с анимацией
 -- Анимация: уменьшение -> увеличение -> уменьшение -> нормальный размер -> пауза 5 сек
 
+-- Подключаем модуль логирования
+local debug_logger = require("scripts.debug_logger")
+
 local function init(self)
 	-- Начальные параметры анимации
 	self.original_scale = vmath.vector3(0.5, 0.5, 1)  -- Соответствует scale в .go файле
@@ -13,7 +16,7 @@ local function init(self)
 	-- Устанавливаем начальный размер
 	go.set_scale(self.original_scale)
 	
-	print("GENERATOR ICON: Initialized with animation at " .. tostring(go.get_position()) .. " scale " .. tostring(self.original_scale))
+	debug_logger.log_icon_animation("Initialized with animation at " .. tostring(go.get_position()) .. " scale " .. tostring(self.original_scale))
 end
 
 local function update(self, dt)
@@ -81,7 +84,7 @@ local function update(self, dt)
 	
 	-- Отладочное сообщение каждые 2 секунды
 	if self.animation_timer % 2 < dt then
-		print("GENERATOR ICON: Animation phase " .. self.animation_phase .. " scale " .. tostring(self.current_scale))
+		debug_logger.log_icon_animation("Animation phase " .. self.animation_phase .. " scale " .. tostring(self.current_scale))
 	end
 end
 

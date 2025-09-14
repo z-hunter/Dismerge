@@ -1,5 +1,7 @@
 -- Подключаем модуль эволюционных таблиц
 local evolution_tables = require("scripts.evolution_tables")
+-- Подключаем модуль логирования
+local debug_logger = require("scripts.debug_logger")
 
 go.property("level", 1)
 go.property("grid_x", 1)
@@ -40,7 +42,7 @@ function init(self)
 		self.evo_id = "TLS"  -- Временное значение
 	end
 	
-	print("TOKEN: Initialized token at grid(" .. self.grid_x .. ", " .. self.grid_y .. ")")
+	debug_logger.log_token_debug("Initialized token at grid(" .. self.grid_x .. ", " .. self.grid_y .. ")")
 	
 	-- Визуальное отображение будет обновлено после получения set_evo_id сообщения
 end
@@ -73,7 +75,7 @@ end
 function on_message(self, message_id, message, sender)
 	if message_id == hash("start_drag") then
 		-- НОВАЯ СИСТЕМА: Начало перетаскивания
-		print("TOKEN: Received start_drag at grid(" .. self.grid_x .. ", " .. self.grid_y .. ") evo_id=" .. tostring(self.evo_id) .. " level=" .. tostring(self.level))
+		debug_logger.log_token_debug("Received start_drag at grid(" .. self.grid_x .. ", " .. self.grid_y .. ") evo_id=" .. tostring(self.evo_id) .. " level=" .. tostring(self.level))
 		self.is_dragging = true
 		-- Визуальные эффекты для перетаскивания
 		go.set_scale(vmath.vector3(1.2, 1.2, 1.0), ".")
@@ -86,7 +88,7 @@ function on_message(self, message_id, message, sender)
 		
 	elseif message_id == hash("stop_drag") then
 		-- НОВАЯ СИСТЕМА: Окончание перетаскивания
-		print("TOKEN: Received stop_drag at grid(" .. self.grid_x .. ", " .. self.grid_y .. ") evo_id=" .. tostring(self.evo_id) .. " level=" .. tostring(self.level))
+		debug_logger.log_token_debug("Received stop_drag at grid(" .. self.grid_x .. ", " .. self.grid_y .. ") evo_id=" .. tostring(self.evo_id) .. " level=" .. tostring(self.level))
 		self.is_dragging = false
 		-- Возвращаем нормальный размер и цвет
 		go.set_scale(vmath.vector3(1.0, 1.0, 1.0), ".")
@@ -104,7 +106,7 @@ function on_message(self, message_id, message, sender)
 		-- НОВАЯ СИСТЕМА: Принудительная установка позиции (для следования за курсором)
 		-- Используем Z-координату из сообщения (устанавливается в board.script)
 		go.set_position(message.position, ".")
-		print("DEBUG: TOKEN SET_POSITION - Input Z=" .. tostring(message.position.z) .. ", Final Z=" .. tostring(message.position.z) .. " at pos (" .. tostring(message.position.x) .. ", " .. tostring(message.position.y) .. ")")
+		debug_logger.log_z_coordinates("TOKEN SET_POSITION - Input Z=" .. tostring(message.position.z) .. ", Final Z=" .. tostring(message.position.z) .. " at pos (" .. tostring(message.position.x) .. ", " .. tostring(message.position.y) .. ")")
 		
 	elseif message_id == hash("move_to") then
 		-- НОВАЯ СИСТЕМА: Плавное движение к цели
@@ -141,7 +143,7 @@ function on_message(self, message_id, message, sender)
 	elseif message_id == hash("set_sprite") then
 		-- 🎨 Устанавливаем специальный спрайт для фишки
 		if message.atlas_id and message.sprite_name then
-			print("TOKEN: Setting sprite " .. message.sprite_name .. " from atlas " .. message.atlas_id)
+			debug_logger.log_token_debug("Setting sprite " .. message.sprite_name .. " from atlas " .. message.atlas_id)
 			
 			-- Просто переключаем анимацию спрайта на нужный спрайт из атласа
 			-- Это работает, потому что все спрайты уже находятся в атласе evo.atlas
@@ -154,9 +156,9 @@ function on_message(self, message_id, message, sender)
 			-- Устанавливаем флаг, что у фишки есть уникальный спрайт
 			self.has_custom_sprite = true
 			
-			print("TOKEN: ✅ Sprite animation changed to " .. message.sprite_name .. " and label cleared")
+			debug_logger.log_token_debug("✅ Sprite animation changed to " .. message.sprite_name .. " and label cleared")
 		else
-			print("TOKEN: ❌ Invalid set_sprite message - missing atlas_id or sprite_name")
+			debug_logger.log_error("Invalid set_sprite message - missing atlas_id or sprite_name")
 		end
 		
 	elseif message_id == hash("set_evo_id") then
@@ -186,7 +188,7 @@ function on_message(self, message_id, message, sender)
 		
 	elseif message_id == hash("play_merge_animation") then
 		-- Анимация появления новой фишки при мердже
-		print("TOKEN: Playing merge animation for new token")
+		debug_logger.log_token_debug("Playing merge animation for new token")
 		
 		-- Устанавливаем начальный масштаб (меньше нормального)
 		go.set(".", "scale", vmath.vector3(0.85, 0.85, 1.0))

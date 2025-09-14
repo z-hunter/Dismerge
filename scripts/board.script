@@ -44,12 +44,12 @@ local function find_cell_at_position(screen_x, screen_y)
 			local cell_pos = grid_to_screen(x, y)
 			local distance = vmath.length(vmath.vector3(screen_x, screen_y, 0) - cell_pos)
 			if distance <= CELL_SIZE / 2 then
-				print("BOARD: Found cell at (" .. x .. ", " .. y .. ") for screen pos (" .. screen_x .. ", " .. screen_y .. ") distance: " .. distance)
+				debug_logger.log_board_debug("Found cell at (" .. x .. ", " .. y .. ") for screen pos (" .. screen_x .. ", " .. screen_y .. ") distance: " .. distance)
 				return { x = x, y = y }
 			end
 		end
 	end
-	print("BOARD: No cell found for screen pos (" .. screen_x .. ", " .. screen_y .. ")")
+	debug_logger.log_board_debug("No cell found for screen pos (" .. screen_x .. ", " .. screen_y .. ")")
 	return nil
 end
 
@@ -121,7 +121,7 @@ local function check_sprite_availability(evo_id, level)
 	-- Открываем файл только один раз
 	local atlas_file = io.open(atlas_path, "r")
 	if not atlas_file then
-		print("BOARD: ❌ Атлас evo.atlas НЕ найден: " .. atlas_path)
+		debug_logger.log_error("Атлас evo.atlas НЕ найден: " .. atlas_path)
 		return false, nil, nil
 	end
 	
@@ -134,16 +134,16 @@ local function check_sprite_availability(evo_id, level)
 	local sprite_exists = string.find(content, image_pattern, 1, true)
 	
 	if sprite_exists then
-		print("BOARD: ✅ Спрайт найден в evo.atlas: " .. sprite_name)
+		debug_logger.log_board_debug("Спрайт найден в evo.atlas: " .. sprite_name)
 		return true, "evo", sprite_name -- Возвращаем "evo" как ID атласа и имя спрайта
 	else
-		print("BOARD: ❌ Спрайт НЕ найден в evo.atlas: " .. sprite_name)
+		debug_logger.log_board_debug("Спрайт НЕ найден в evo.atlas: " .. sprite_name)
 		return false, nil, nil -- Возвращаем false если спрайт не найден
 	end
 end
 
 function init(self)
-	print("BOARD: init() called - script is loading")
+	debug_logger.log_init("BOARD: init() called - script is loading")
 	msg.post(".", "acquire_input_focus")
 	
 	-- Инициализируем генератор случайных чисел
@@ -179,28 +179,28 @@ function init(self)
 	self.icon_animations = {} -- таблица анимаций иконок генераторов по ключу "x_y"
 
 	-- Загружаем эволюционные таблицы
-	print("BOARD: Loading evolution tables...")
+	debug_logger.log_init("Loading evolution tables...")
 	if evolution_tables.load_evolution_tables() then
-		print("BOARD: Evolution tables loaded successfully")
+		debug_logger.log_init("Evolution tables loaded successfully")
 		-- Выводим отладочную информацию
 		evolution_tables.debug_print_chains()
 	else
-		print("BOARD: ERROR - Failed to load evolution tables")
+		debug_logger.log_error("Failed to load evolution tables")
 		return
 	end
 
 	-- Загружаем конфигурацию генераторов
-	print("BOARD: Loading generator configuration...")
+	debug_logger.log_init("Loading generator configuration...")
 	local generators = generator_config.load_generator_config()
 	if not generators then
-		print("BOARD: ERROR - Failed to load generator configuration")
+		debug_logger.log_error("Failed to load generator configuration")
 		return
 	end
 	
 	-- Валидируем конфигурацию генераторов
 	local is_valid, error_msg = generator_config.validate_generator_config(evolution_tables)
 	if not is_valid then
-		print("BOARD: ERROR - Generator configuration validation failed: " .. error_msg)
+		debug_logger.log_error("Generator configuration validation failed: " .. error_msg)
 		return
 	end
 	
@@ -208,17 +208,17 @@ function init(self)
 	generator_config.debug_print_config()
 
 	-- Загружаем конфигурацию поля
-	print("BOARD: Loading field configuration...")
+	debug_logger.log_init("Loading field configuration...")
 	local field_config_data = field_config.load_initial_field_config()
 	if not field_config_data then
-		print("BOARD: ERROR - Failed to load field configuration")
+		debug_logger.log_error("Failed to load field configuration")
 		return
 	end
 	
 	-- Валидируем конфигурацию поля
 	local is_valid, error_msg = field_config.validate_field_config(field_config_data, evolution_tables)
 	if not is_valid then
-		print("BOARD: ERROR - Field configuration validation failed: " .. error_msg)
+		debug_logger.log_error("Field configuration validation failed: " .. error_msg)
 		return
 	end
 	
@@ -238,7 +238,7 @@ function init(self)
 				-0.5  -- Ячейки поля дальше от камеры
 			)
 			local id = factory.create("#cell_factory", pos, nil, { grid_x = x, grid_y = y }, 0)
-			print("DEBUG: CREATE_CELL - pos.z=" .. tostring(pos.z) .. ", factory Z=0, final Z=" .. tostring(pos.z + 0))
+			debug_logger.log_z_coordinates("CREATE_CELL - pos.z=" .. tostring(pos.z) .. ", factory Z=0, final Z=" .. tostring(pos.z + 0))
 			self.cells[x][y] = { id = id }
 			
 			-- Устанавливаем случайный тайл для ячейки в шахматном порядке
@@ -266,18 +266,18 @@ function init(self)
 				-- Проверяем, существует ли такая цепочка и уровень
 				local chain = evolution_tables.get_evolution_chain(evo_id)
 				if not chain then
-					print("BOARD: ERROR - Evolution chain '" .. evo_id .. "' not found in config at grid(" .. col_num .. ", " .. real_y .. ")")
+					debug_logger.log_error("Evolution chain '" .. evo_id .. "' not found in config at grid(" .. col_num .. ", " .. real_y .. ")")
 				elseif level > chain.max_grade then
-					print("BOARD: ERROR - Level " .. level .. " exceeds max grade " .. chain.max_grade .. " for chain '" .. evo_id .. "' at grid(" .. col_num .. ", " .. real_y .. ")")
+					debug_logger.log_error("Level " .. level .. " exceeds max grade " .. chain.max_grade .. " for chain '" .. evo_id .. "' at grid(" .. col_num .. ", " .. real_y .. ")")
 				else
 					local token_key = create_token_on_board(self, evo_id, level, col_num, real_y)
-					print("BOARD: Created token " .. evo_id .. " level " .. level .. " at grid(" .. col_num .. ", " .. real_y .. ") key=" .. tostring(token_key))
+					debug_logger.log_board_debug("Created token " .. evo_id .. " level " .. level .. " at grid(" .. col_num .. ", " .. real_y .. ") key=" .. tostring(token_key))
 				end
 			end
 		end
 	end
 	
-	print("BOARD: Initialization complete")
+	debug_logger.log_init("BOARD: Initialization complete")
 	
 	-- Генераторы теперь инициализируются автоматически в token.create
 	
@@ -286,7 +286,7 @@ function init(self)
 end
 
 function create_token_on_board(self, evo_id, level, grid_x, grid_y)
-	print("BOARD: create_token_on_board called for " .. evo_id .. " level " .. level .. " at (" .. grid_x .. ", " .. grid_y .. ")")
+	debug_logger.log_board_debug("create_token_on_board called for " .. evo_id .. " level " .. level .. " at (" .. grid_x .. ", " .. grid_y .. ")")
 	local pos = grid_to_screen(grid_x, grid_y)
 	pos.z = 0  -- Z=0 для фишек на поле (final Z = 0 + 0 + 1 = 1)
 	local properties = { level = level, grid_x = grid_x, grid_y = grid_y }
@@ -295,11 +295,11 @@ function create_token_on_board(self, evo_id, level, grid_x, grid_y)
 	local has_sprite, atlas_id, sprite_name = check_sprite_availability(evo_id, level)
 	
 	local token_id = factory.create("#token_factory", pos, nil, properties, 1)  -- Factory Z=1
-	print("DEBUG: CREATE_TOKEN - pos.z=" .. tostring(pos.z) .. ", factory Z=1, final Z=1")
+	debug_logger.log_z_coordinates("CREATE_TOKEN - pos.z=" .. tostring(pos.z) .. ", factory Z=1, final Z=1")
     
     -- Проверяем, что токен был создан успешно
     if not token_id then
-        print("ERROR: Failed to create token - factory.create returned nil")
+        debug_logger.log_error("Failed to create token - factory.create returned nil")
         return nil
     end
     
@@ -308,7 +308,7 @@ function create_token_on_board(self, evo_id, level, grid_x, grid_y)
     -- Создаем новый ООП объект фишки
     local token_obj = token.create(evo_id, level, grid_x, grid_y, token_id)
     if not token_obj then
-        print("ERROR: Failed to create token object")
+        debug_logger.log_error("Failed to create token object")
         return nil
     end
     -- Убеждаемся, что token_id сохранен в объекте
@@ -346,11 +346,11 @@ function update(self, dt)
 			msg.post(self.dragged_token, "set_position", { position = target_pos })
 			
 			-- Отладочный вывод Z-координат всех фишек на поле
-			print("DEBUG: DRAGGING - Checking Z coordinates of all tokens on board:")
+			debug_logger.log_z_coordinates("DRAGGING - Checking Z coordinates of all tokens on board:")
 			for key, token_data in pairs(self.tokens) do
 				if token_data.token_id and token_data.token_id ~= self.dragged_token then
 					local token_pos = go.get_position(token_data.token_id)
-					print("DEBUG: TOKEN " .. key .. " - Z=" .. tostring(token_pos.z) .. " at pos (" .. tostring(token_pos.x) .. ", " .. tostring(token_pos.y) .. ")")
+					debug_logger.log_z_coordinates("TOKEN " .. key .. " - Z=" .. tostring(token_pos.z) .. " at pos (" .. tostring(token_pos.x) .. ", " .. tostring(token_pos.y) .. ")")
 				end
 			end
 		end
@@ -375,7 +375,7 @@ function update(self, dt)
 			
 			-- Проверяем, что токен всё ещё существует
 			if not anim.token_id or not go.exists(anim.token_id) then
-				print("WARNING: Animating token no longer exists, removing from animation list")
+				debug_logger.log_board_debug("Animating token no longer exists, removing from animation list")
 				table.remove(self.animating_tokens, i)
 			else
 				local elapsed = current_time - anim.start_time
@@ -412,7 +412,7 @@ function update(self, dt)
 					if #adjacent_cells > 0 then
 						-- Есть место - пытаемся сгенерировать одну фишку
 						if token_obj.automatic_generator:try_generate() then
-							print("BOARD: Automatic generator " .. generator_id .. " generated: " .. output_token)
+							debug_logger.log_board_debug("Automatic generator " .. generator_id .. " generated: " .. output_token)
 							drop_token_from_generator(self, output_token, { x = token_obj.grid_x, y = token_obj.grid_y }, "automatic")
 							update_generator_visual(self, generator_id, token_key, token_obj)
 							-- Сбрасываем таймер после успешной генерации
@@ -465,7 +465,7 @@ function check_and_resume_paused_generators(self)
 						if output_token then
 							-- Пытаемся сгенерировать фишку
 							if auto_gen:try_generate() then
-								print("BOARD: Automatic generator " .. generator_id .. " generated: " .. output_token .. " (after resume)")
+								debug_logger.log_board_debug("Automatic generator " .. generator_id .. " generated: " .. output_token .. " (after resume)")
 								drop_token_from_generator(self, output_token, { x = grid_x, y = grid_y }, "automatic")
 								update_generator_visual(self, generator_id, token_key, token_obj)
 								-- Сбрасываем таймер после успешной генерации
@@ -573,7 +573,7 @@ function update_icon_animations(self, dt)
 end
 
 function on_message(self, message_id, message, sender)
-	print("BOARD: on_message called with message_id=" .. tostring(message_id))
+	debug_logger.log_board_debug("on_message called with message_id=" .. tostring(message_id))
 	if message_id == hash("cell_clicked") then
 		-- Проверяем, есть ли фишка в этой ячейке
 		local token_key = utils.get_token_key(message.grid_x, message.grid_y)
@@ -585,7 +585,7 @@ function on_message(self, message_id, message, sender)
 				-- Проверяем, не генератор ли это - если да, то активируем
 				local generator_id = utils.create_token_string(token.evo_id, token.level)
 				if generator_config.is_generator(generator_id) then
-					print("BOARD: Generator activated on second click: " .. generator_id .. " at grid(" .. message.grid_x .. ", " .. message.grid_y .. ")")
+					debug_logger.log_board_debug("Generator activated on second click: " .. generator_id .. " at grid(" .. message.grid_x .. ", " .. message.grid_y .. ")")
 					activate_generator(self, token_key, { x = message.grid_x, y = message.grid_y })
 				else
 					-- Не генератор - просто снимаем выделение
@@ -601,12 +601,12 @@ function on_message(self, message_id, message, sender)
 		end
 	elseif message_id == hash("debug_get_state") then
 		-- Отладочное сообщение для получения состояния доски
-		print("BOARD: DEBUG - Current state:")
-		print("  Selected cell: " .. (self.selected_cell and ("(" .. self.selected_cell.x .. ", " .. self.selected_cell.y .. ")") or "none"))
-		print("  Pre-drag selection: " .. (self.pre_drag_selection and ("(" .. self.pre_drag_selection.x .. ", " .. self.pre_drag_selection.y .. ")") or "none"))
-		print("  Is dragging: " .. tostring(self.is_dragging))
-		print("  Dragged token: " .. tostring(self.dragged_token))
-		print("  Tokens count: " .. (function() local count = 0 for _ in pairs(self.tokens) do count = count + 1 end return count end)())
+		debug_logger.log_board_debug("DEBUG - Current state:")
+		debug_logger.log_board_debug("  Selected cell: " .. (self.selected_cell and ("(" .. self.selected_cell.x .. ", " .. self.selected_cell.y .. ")") or "none"))
+		debug_logger.log_board_debug("  Pre-drag selection: " .. (self.pre_drag_selection and ("(" .. self.pre_drag_selection.x .. ", " .. self.pre_drag_selection.y .. ")") or "none"))
+		debug_logger.log_board_debug("  Is dragging: " .. tostring(self.is_dragging))
+		debug_logger.log_board_debug("  Dragged token: " .. tostring(self.dragged_token))
+		debug_logger.log_board_debug("  Tokens count: " .. (function() local count = 0 for _ in pairs(self.tokens) do count = count + 1 end return count end)())
 
 	end
 end
@@ -646,13 +646,13 @@ function on_input(self, action_id, action)
 					-- Отправляем сообщение о клике на ячейку (для выделения)
 					if self.cells[clicked_cell.x] and self.cells[clicked_cell.x][clicked_cell.y] then
 						local cell_id = self.cells[clicked_cell.x][clicked_cell.y].id
-						print("BOARD: Sending clicked message to cell ID: " .. tostring(cell_id) .. " at (" .. clicked_cell.x .. ", " .. clicked_cell.y .. ")")
+						debug_logger.log_cell_selection("Sending clicked message to cell ID: " .. tostring(cell_id) .. " at (" .. clicked_cell.x .. ", " .. clicked_cell.y .. ")")
 						msg.post(cell_id, "clicked", {
 							grid_x = clicked_cell.x,
 							grid_y = clicked_cell.y
 						})
 					else
-						print("BOARD: ERROR - Cell not found in self.cells at (" .. clicked_cell.x .. ", " .. clicked_cell.y .. ")")
+						debug_logger.log_error("Cell not found in self.cells at (" .. clicked_cell.x .. ", " .. clicked_cell.y .. ")")
 					end
 				end
 			end
@@ -675,7 +675,7 @@ function select_cell(self, grid_x, grid_y)
 	local token = self.tokens[token_key]
 	
 	if token then
-		print("BOARD: Selecting cell (" .. grid_x .. ", " .. grid_y .. ") with token " .. token.evo_id .. " level " .. token.level)
+		debug_logger.log_cell_selection("Selecting cell (" .. grid_x .. ", " .. grid_y .. ") with token " .. token.evo_id .. " level " .. token.level)
 		
 		-- Снимаем предыдущее выделение
 		if self.selected_cell then
@@ -688,27 +688,27 @@ function select_cell(self, grid_x, grid_y)
 		-- Визуально выделяем ячейку (изменяем цвет тайла)
 		if self.cells[grid_x] and self.cells[grid_x][grid_y] then
 			local cell_id = self.cells[grid_x][grid_y].id
-			print("BOARD: Sending set_highlighted(true) to cell ID: " .. tostring(cell_id))
+			debug_logger.log_cell_selection("Sending set_highlighted(true) to cell ID: " .. tostring(cell_id))
 			msg.post(cell_id, "set_highlighted", { highlighted = true })
 		else
-			print("BOARD: ERROR - Cell not found at (" .. grid_x .. ", " .. grid_y .. ")")
+			debug_logger.log_error("Cell not found at (" .. grid_x .. ", " .. grid_y .. ")")
 		end
 		
 		-- Показываем информацию о фишке
 		show_token_info(self, token.evo_id, token.level)
 	else
-		print("BOARD: Cannot select cell (" .. grid_x .. ", " .. grid_y .. ") - no token found")
+		debug_logger.log_cell_selection("Cannot select cell (" .. grid_x .. ", " .. grid_y .. ") - no token found")
 	end
 end
 
 -- СИСТЕМА ВЫДЕЛЕНИЯ ЯЧЕЕК: Функция снятия выделения
 function clear_cell_selection(self)
 	if self.selected_cell then
-		print("BOARD: Clearing selection from cell (" .. self.selected_cell.x .. ", " .. self.selected_cell.y .. ")")
+		debug_logger.log_cell_selection("Clearing selection from cell (" .. self.selected_cell.x .. ", " .. self.selected_cell.y .. ")")
 		
 		if self.cells[self.selected_cell.x] and self.cells[self.selected_cell.x][self.selected_cell.y] then
 			local cell_id = self.cells[self.selected_cell.x][self.selected_cell.y].id
-			print("BOARD: Sending set_highlighted(false) to cell ID: " .. tostring(cell_id))
+			debug_logger.log_cell_selection("Sending set_highlighted(false) to cell ID: " .. tostring(cell_id))
 			msg.post(cell_id, "set_highlighted", { highlighted = false })
 		end
 		
@@ -717,7 +717,7 @@ function clear_cell_selection(self)
 		
 		self.selected_cell = nil
 	else
-		print("BOARD: No selection to clear")
+		debug_logger.log_cell_selection("No selection to clear")
 	end
 end
 
@@ -732,10 +732,10 @@ function start_drag(self, token_id, grid_x, grid_y, level, evo_id)
 	-- Сохраняем информацию о выделении перед началом перетаскивания
 	if self.selected_cell then
 		self.pre_drag_selection = { x = self.selected_cell.x, y = self.selected_cell.y }
-		print("BOARD: Saved pre-drag selection: (" .. self.pre_drag_selection.x .. ", " .. self.pre_drag_selection.y .. ")")
+		debug_logger.log_drag_operations("Saved pre-drag selection: (" .. self.pre_drag_selection.x .. ", " .. self.pre_drag_selection.y .. ")")
 	else
 		self.pre_drag_selection = nil
-		print("BOARD: No selection to save before drag")
+		debug_logger.log_drag_operations("No selection to save before drag")
 	end
 	
 	-- Снимаем выделение при начале перетаскивания (не вызываем select_cell)
@@ -746,15 +746,15 @@ function start_drag(self, token_id, grid_x, grid_y, level, evo_id)
 	-- НЕ удаляем фишку из данных при начале перетаскивания
 	-- Она будет перемещена в perform_move или perform_return
 	local token_key = utils.get_token_key(grid_x, grid_y)
-	print("DEBUG: START_DRAG - token_key=" .. tostring(token_key) .. " for (" .. grid_x .. "," .. grid_y .. ")")
-	print("DEBUG: START_DRAG - self.tokens[token_key] exists: " .. tostring(self.tokens[token_key] ~= nil))
+	debug_logger.log_drag_operations("START_DRAG - token_key=" .. tostring(token_key) .. " for (" .. grid_x .. "," .. grid_y .. ")")
+	debug_logger.log_drag_operations("START_DRAG - self.tokens[token_key] exists: " .. tostring(self.tokens[token_key] ~= nil))
 	
 	-- Отправляем сообщение фишке о начале перетаскивания
 	local token_obj = self.tokens[token_key]
 	if token_obj and token_obj.token_id then
 		msg.post(token_obj.token_id, "start_drag")
 	else
-		print("ERROR: Token object or token_id not found for key " .. tostring(token_key))
+		debug_logger.log_error("Token object or token_id not found for key " .. tostring(token_key))
 	end
 	
 	-- Скрываем иконку генератора при перетаскивании
@@ -764,15 +764,15 @@ function start_drag(self, token_id, grid_x, grid_y, level, evo_id)
 	local generator_id = utils.create_token_string(evo_id, level)
 	if generator_config.is_generator(generator_id) then
 		remove_generator_indicator(self, token_key)
-		print("BOARD: Removed indicator for dragged generator " .. generator_id)
+		debug_logger.log_board_debug("Removed indicator for dragged generator " .. generator_id)
 	end
 	
-	print("BOARD: Drag started - token " .. evo_id .. " level " .. level .. " from (" .. grid_x .. ", " .. grid_y .. ")")
+	debug_logger.log_drag_operations("Drag started - token " .. evo_id .. " level " .. level .. " from (" .. grid_x .. ", " .. grid_y .. ")")
 end
 
 -- НОВАЯ СИСТЕМА: Функция обработки отпускания фишки
 function handle_token_release(self, mouse_x, mouse_y)
-	print("BOARD: Handling token release at (" .. mouse_x .. ", " .. mouse_y .. ")")
+	debug_logger.log_drag_operations("Handling token release at (" .. mouse_x .. ", " .. mouse_y .. ")")
 	
 	-- Находим ячейку под курсором
 	local target_cell = find_cell_at_position(mouse_x, mouse_y)
@@ -785,20 +785,20 @@ function handle_token_release(self, mouse_x, mouse_y)
 		if target_token and target_token.level == self.dragged_level and target_token.evo_id == self.dragged_evo_id and 
 		   not (target_cell.x == self.dragged_from.x and target_cell.y == self.dragged_from.y) then
 			-- МЕРДЖ: Объединяем фишки
-			print("BOARD: MERGE - " .. target_token.evo_id .. " level " .. target_token.level .. " + " .. self.dragged_evo_id .. " level " .. self.dragged_level)
+			debug_logger.log_drag_operations("MERGE - " .. target_token.evo_id .. " level " .. target_token.level .. " + " .. self.dragged_evo_id .. " level " .. self.dragged_level)
 			perform_merge(self, target_cell, target_token, target_key)
 		elseif not target_token then
 			-- ПЕРЕМЕЩЕНИЕ: Перемещаем на пустую ячейку
-			print("BOARD: MOVE - to empty cell (" .. target_cell.x .. ", " .. target_cell.y .. ")")
+			debug_logger.log_drag_operations("MOVE - to empty cell (" .. target_cell.x .. ", " .. target_cell.y .. ")")
 			perform_move(self, target_cell)
 		else
 			-- ВОЗВРАТ: Возвращаем на исходную позицию
-			print("BOARD: RETURN - to original position (" .. self.dragged_from.x .. ", " .. self.dragged_from.y .. ")")
+			debug_logger.log_drag_operations("RETURN - to original position (" .. self.dragged_from.x .. ", " .. self.dragged_from.y .. ")")
 			perform_return(self)
 		end
 	else
 		-- ВОЗВРАТ: Не попали в ячейку
-		print("BOARD: RETURN - missed cell, returning to (" .. self.dragged_from.x .. ", " .. self.dragged_from.y .. ")")
+		debug_logger.log_drag_operations("RETURN - missed cell, returning to (" .. self.dragged_from.x .. ", " .. self.dragged_from.y .. ")")
 		perform_return(self)
 	end
 	
@@ -880,7 +880,7 @@ function show_generator_indicator(self, generator_id, token_key, token, progress
 	-- Извлекаем координаты из ключа токена
 	local grid_x, grid_y = utils.parse_token_key(token_key)
 	if not grid_x or not grid_y then
-		print("BOARD: ERROR - Cannot parse token key: " .. token_key)
+		debug_logger.log_error("Cannot parse token key: " .. token_key)
 		return
 	end
 	
@@ -905,7 +905,7 @@ function show_generator_indicator(self, generator_id, token_key, token, progress
 			return
 		end
 		
-		print("DEBUG: SHOW_MANUAL_INDICATOR: token_pos = (" .. tostring(token_pos.x) .. ", " .. tostring(token_pos.y) .. ", " .. tostring(token_pos.z) .. ") indicator_pos = (" .. tostring(indicator_pos.x) .. ", " .. tostring(indicator_pos.y) .. ", " .. tostring(indicator_pos.z) .. ") for key " .. tostring(token_key))
+		debug_logger.log_z_coordinates("SHOW_MANUAL_INDICATOR: token_pos = (" .. tostring(token_pos.x) .. ", " .. tostring(token_pos.y) .. ", " .. tostring(token_pos.z) .. ") indicator_pos = (" .. tostring(indicator_pos.x) .. ", " .. tostring(indicator_pos.y) .. ", " .. tostring(indicator_pos.z) .. ") for key " .. tostring(token_key))
 		
 		local indicator = Indicator:new(indicator_pos, indicator_scale)
 		indicator:set_color(indicator_color)
@@ -930,7 +930,7 @@ function show_generator_indicator(self, generator_id, token_key, token, progress
 			return
 		end
 		
-		print("DEBUG: SHOW_AUTO_INDICATOR: token_pos = (" .. tostring(token_pos.x) .. ", " .. tostring(token_pos.y) .. ", " .. tostring(token_pos.z) .. ") indicator_pos = (" .. tostring(indicator_pos.x) .. ", " .. tostring(indicator_pos.y) .. ", " .. tostring(indicator_pos.z) .. ") for key " .. tostring(token_key))
+		debug_logger.log_z_coordinates("SHOW_AUTO_INDICATOR: token_pos = (" .. tostring(token_pos.x) .. ", " .. tostring(token_pos.y) .. ", " .. tostring(token_pos.z) .. ") indicator_pos = (" .. tostring(indicator_pos.x) .. ", " .. tostring(indicator_pos.y) .. ", " .. tostring(indicator_pos.z) .. ") for key " .. tostring(token_key))
 		
 		local indicator = Indicator:new(indicator_pos, indicator_scale)
 		indicator:set_color(indicator_color)
@@ -949,7 +949,7 @@ function remove_generator_indicator(self, token_key)
 		debug_logger.log_important("Removed manual reload indicator for generator at " .. token_key, 5.0)
 		if self.tokens and self.tokens[token_key] and self.tokens[token_key].id then
 			local pos = go.get_position(self.tokens[token_key].id)
-			print("DEBUG: REMOVE_MANUAL_INDICATOR: token_pos = (" .. tostring(pos.x) .. ", " .. tostring(pos.y) .. ", " .. tostring(pos.z) .. ") for key " .. tostring(token_key))
+			debug_logger.log_z_coordinates("REMOVE_MANUAL_INDICATOR: token_pos = (" .. tostring(pos.x) .. ", " .. tostring(pos.y) .. ", " .. tostring(pos.z) .. ") for key " .. tostring(token_key))
 		end
 	end
 end
@@ -962,7 +962,7 @@ function remove_generator_auto_indicator(self, token_key)
 		debug_logger.log_important("Removed automatic reload indicator for generator at " .. token_key, 5.0)
 		if self.tokens and self.tokens[token_key] and self.tokens[token_key].id then
 			local pos = go.get_position(self.tokens[token_key].id)
-			print("DEBUG: REMOVE_AUTO_INDICATOR: token_pos = (" .. tostring(pos.x) .. ", " .. tostring(pos.y) .. ", " .. tostring(pos.z) .. ") for key " .. tostring(token_key))
+			debug_logger.log_z_coordinates("REMOVE_AUTO_INDICATOR: token_pos = (" .. tostring(pos.x) .. ", " .. tostring(pos.y) .. ", " .. tostring(pos.z) .. ") for key " .. tostring(token_key))
 		end
 	end
 end
@@ -987,12 +987,12 @@ function activate_generator_token(self, token_key)
     -- Проверяем, завершился ли цикл для одноразового генератора
     if generator_config.is_disposable(generator_id) and token.manual_generator and token.manual_generator.current_capacity <= 0 then
         increment_cycle_count_for_token(self, token_key)
-        print("BOARD: Completed cycle for disposable generator instance " .. generator_id .. " (cycle " .. (token.manual_generator.completed_cycles or 0) .. "/" .. (generator.dispose_after or 0) .. ")")
+        debug_logger.log_board_debug("Completed cycle for disposable generator instance " .. generator_id .. " (cycle " .. (token.manual_generator.completed_cycles or 0) .. "/" .. (generator.dispose_after or 0) .. ")")
         
         -- Проверяем, не исчерпан ли лимит циклов после увеличения счетчика
         local remaining_cycles = get_remaining_cycles_for_token(self, token_key)
         if remaining_cycles and remaining_cycles <= 0 then
-            print("BOARD: Disposable generator exhausted after cycle completion")
+            debug_logger.log_board_debug("Disposable generator exhausted after cycle completion")
             return true -- Возвращаем true, чтобы активация считалась успешной, но генератор будет уничтожен
         end
     end
@@ -1004,7 +1004,7 @@ function activate_generator_token(self, token_key)
             local remaining_cycles = get_remaining_cycles_for_token(self, token_key)
             if remaining_cycles and remaining_cycles <= 0 then
                 -- Генератор исчерпан, не запускаем перезарядку
-                print("BOARD: Disposable generator exhausted, skipping reload")
+                debug_logger.log_board_debug("BOARD: Disposable generator exhausted, skipping reload")
                 return true
             end
         end
@@ -1034,7 +1034,7 @@ function is_generator_reloading(self, token_key)
                 if generator_config.is_disposable(utils.create_token_string(token.evo_id, token.level)) then
                     local remaining_cycles = get_remaining_cycles_for_token(self, token_key)
                     if remaining_cycles and remaining_cycles <= 0 then
-                        print("BOARD: Disposable generator exhausted after reload, disposing now")
+                        debug_logger.log_board_debug("BOARD: Disposable generator exhausted after reload, disposing now")
                         -- Если генератор исчерпан, сразу уничтожаем его
                         handle_disposable_generator_disposal(self, token_key)
                     end
@@ -1070,7 +1070,7 @@ function is_manual_generator_reloading(self, token_key)
                 if generator_config.is_disposable(utils.create_token_string(token.evo_id, token.level)) then
                     local remaining_cycles = get_remaining_cycles_for_token(self, token_key)
                     if remaining_cycles and remaining_cycles <= 0 then
-                        print("BOARD: Disposable generator exhausted after reload, disposing now")
+                        debug_logger.log_board_debug("BOARD: Disposable generator exhausted after reload, disposing now")
                         -- Если генератор исчерпан, сразу уничтожаем его
                         handle_disposable_generator_disposal(self, token_key)
                     end
@@ -1123,13 +1123,13 @@ end
 function activate_generator(self, token_key, cell)
     local ok, err = activate_generator_token(self, token_key)
     if not ok then
-        print("BOARD: Generator cannot be activated: " .. (err or "unknown error"))
+        debug_logger.log_error("Generator cannot be activated: " .. (err or "unknown error"))
         return
     end
     
     local token = self.tokens[token_key]
     if not token then
-        print("BOARD: Token was removed during activation")
+        debug_logger.log_board_debug("BOARD: Token was removed during activation")
         return
     end
     
@@ -1137,7 +1137,7 @@ function activate_generator(self, token_key, cell)
     
     -- Проверяем, не исчерпан ли генератор после активации
     if should_dispose_token(self, token_key) then
-        print("BOARD: Generator " .. generator_id .. " is exhausted, skipping generation")
+        debug_logger.log_board_debug("BOARD: Generator " .. generator_id .. " is exhausted, skipping generation")
         handle_disposable_generator_disposal(self, token_key)
         update_generator_icons(self)
         return
@@ -1146,11 +1146,11 @@ function activate_generator(self, token_key, cell)
     local output_token, error_msg = generator_config.get_random_manual_output(generator_id)
     
     if output_token then
-        print("BOARD: Generator " .. generator_id .. " generated: " .. output_token)
+        debug_logger.log_board_debug("BOARD: Generator " .. generator_id .. " generated: " .. output_token)
         drop_token_from_generator(self, output_token, cell, "manual")
         update_generator_visual(self, generator_id, token_key, token)
     else
-        print("BOARD: Generator " .. generator_id .. " failed to generate: " .. (error_msg or "unknown error"))
+        debug_logger.log_board_debug("BOARD: Generator " .. generator_id .. " failed to generate: " .. (error_msg or "unknown error"))
     end
     
     -- Проверяем, нужно ли уничтожить одноразовый генератор
@@ -1177,7 +1177,7 @@ function drop_token_from_generator(self, token_string, generator_cell, drop_type
 	-- Парсим строку токена
 	local evo_id, level = utils.parse_token_string(token_string)
 	if not evo_id or not level then
-		print("BOARD: ERROR - Invalid token string: " .. token_string)
+		debug_logger.log_error("Invalid token string: " .. token_string)
 		return
 	end
 	
@@ -1192,38 +1192,38 @@ function drop_token_from_generator(self, token_string, generator_cell, drop_type
 		local source_generator_id = utils.create_token_string(source_token.evo_id, source_token.level)
 		local source_generator = generator_config.get_generator(source_generator_id)
 		
-		print("BOARD: Drop from generator " .. source_generator_id .. " at (" .. generator_cell.x .. ", " .. generator_cell.y .. ")")
+		debug_logger.log_board_debug("BOARD: Drop from generator " .. source_generator_id .. " at (" .. generator_cell.x .. ", " .. generator_cell.y .. ")")
 		
 		-- Определяем тип дропа на основе переданного параметра
 		-- НЕ на основе конфигурации генератора!
 		if drop_type == "automatic" then
 			-- Автоматические генераторы используют ближний дроп
-			print("BOARD: Using nearest drop for automatic generator")
+			debug_logger.log_board_debug("BOARD: Using nearest drop for automatic generator")
 			local adjacent_cells = find_adjacent_empty_cells(self, generator_cell.x, generator_cell.y)
-			print("BOARD: Found " .. #adjacent_cells .. " adjacent empty cells")
+			debug_logger.log_board_debug("BOARD: Found " .. #adjacent_cells .. " adjacent empty cells")
 			
 			if #adjacent_cells > 0 then
 				-- Выбираем случайную соседнюю клетку
 				target_cell = adjacent_cells[math.random(1, #adjacent_cells)]
-				print("BOARD: Selected adjacent cell (" .. target_cell.x .. ", " .. target_cell.y .. ")")
+				debug_logger.log_board_debug("BOARD: Selected adjacent cell (" .. target_cell.x .. ", " .. target_cell.y .. ")")
 			else
 				-- Если соседних клеток нет, автоматический генератор не дропает фишку
-				print("BOARD: No adjacent cells available for automatic generator - skipping drop")
+				debug_logger.log_board_debug("BOARD: No adjacent cells available for automatic generator - skipping drop")
 				return
 			end
 		else
 			-- Ручные генераторы используют обычный дроп (любая свободная клетка)
-			print("BOARD: Using normal drop for manual generator")
+			debug_logger.log_board_debug("BOARD: Using normal drop for manual generator")
 			target_cell = find_nearest_empty_cell(self, generator_cell.x, generator_cell.y)
 		end
 	else
 		-- Если генератор не найден, используем обычный дроп
-		print("BOARD: Generator not found, using normal drop")
+		debug_logger.log_board_debug("BOARD: Generator not found, using normal drop")
 		target_cell = find_nearest_empty_cell(self, generator_cell.x, generator_cell.y)
 	end
 	
 	if not target_cell then
-		print("BOARD: No empty cells available for drop")
+		debug_logger.log_board_debug("BOARD: No empty cells available for drop")
 		return
 	end
 	
@@ -1234,20 +1234,20 @@ function drop_token_from_generator(self, token_string, generator_cell, drop_type
 	-- Если выброшенная фишка является генератором, инициализируем его
 	local dropped_generator_id = utils.create_token_string(evo_id, level)
 	if generator_config.is_generator(dropped_generator_id) then
-		print("BOARD: Initialized dropped generator " .. dropped_generator_id .. " with capacity " .. tostring(self.tokens[token_key].manual_generator and self.tokens[token_key].manual_generator.current_capacity or "N/A"))
+		debug_logger.log_board_debug("BOARD: Initialized dropped generator " .. dropped_generator_id .. " with capacity " .. tostring(self.tokens[token_key].manual_generator and self.tokens[token_key].manual_generator.current_capacity or "N/A"))
 	end
 	
 	-- Создаем анимацию полета от генератора к целевой клетке
 	create_drop_animation(self, token_id, generator_cell, target_cell)
 	
-	print("BOARD: Token dropped: " .. token_string .. " at grid(" .. target_cell.x .. ", " .. target_cell.y .. ")")
+	debug_logger.log_board_debug("BOARD: Token dropped: " .. token_string .. " at grid(" .. target_cell.x .. ", " .. target_cell.y .. ")")
 end
 
 -- Функция создания анимации полета фишки
 function create_drop_animation(self, token_id, from_cell, to_cell)
 	-- Проверяем, что token_id не nil
 	if not token_id then
-		print("ERROR: create_drop_animation called with nil token_id")
+		debug_logger.log_error("create_drop_animation called with nil token_id")
 		return
 	end
 	
@@ -1287,7 +1287,7 @@ function perform_merge(self, target_cell, target_token, target_key)
 		
 		-- Проверяем, что токен был создан успешно
 		if not token_key then
-			print("ERROR: Merge failed - could not create new token, keeping original tokens")
+			debug_logger.log_error("Merge failed - could not create new token, keeping original tokens")
 			return
 		end
 		
@@ -1303,7 +1303,7 @@ function perform_merge(self, target_cell, target_token, target_key)
 			if dragged_key and self.generator_auto_indicators[dragged_key] then
 				remove_generator_auto_indicator(self, dragged_key)
 			end
-			print("BOARD: Removed indicator for dragged generator " .. dragged_generator_id)
+			debug_logger.log_board_debug("BOARD: Removed indicator for dragged generator " .. dragged_generator_id)
 		end
 		
 		if generator_config.is_generator(target_generator_id) then
@@ -1312,7 +1312,7 @@ function perform_merge(self, target_cell, target_token, target_key)
 			if target_key and self.generator_auto_indicators[target_key] then
 				remove_generator_auto_indicator(self, target_key)
 			end
-			print("BOARD: Removed indicator for target generator " .. target_generator_id)
+			debug_logger.log_board_debug("BOARD: Removed indicator for target generator " .. target_generator_id)
 		end
 		
 		-- Удаляем старые фишки (с проверкой существования)
@@ -1327,37 +1327,37 @@ function perform_merge(self, target_cell, target_token, target_key)
 		local new_token = self.tokens[token_key]
 		if new_token and new_token.token_id then
 			msg.post(new_token.token_id, "play_merge_animation")
-			print("BOARD: Started merge animation for new token after successful merge")
+			debug_logger.log_board_debug("BOARD: Started merge animation for new token after successful merge")
 		end
-		print("BOARD: Created merged token " .. merge_result.evo_id .. " level " .. merge_result.level .. " at grid(" .. target_cell.x .. ", " .. target_cell.y .. ") key=" .. tostring(token_key))
-		print("DEBUG: MERGE - new_token.token_id=" .. tostring(new_token and new_token.token_id) .. ", new_token exists=" .. tostring(new_token ~= nil))
+		debug_logger.log_board_debug("BOARD: Created merged token " .. merge_result.evo_id .. " level " .. merge_result.level .. " at grid(" .. target_cell.x .. ", " .. target_cell.y .. ") key=" .. tostring(token_key))
+		debug_logger.log_board_debug("DEBUG: MERGE - new_token.token_id=" .. tostring(new_token and new_token.token_id) .. ", new_token exists=" .. tostring(new_token ~= nil))
 		-- Очищаем данные об исходной позиции перетаскиваемой фишки
 		local dragged_key = utils.get_token_key(self.dragged_from.x, self.dragged_from.y)
 		if self.tokens[dragged_key] then
 			-- Очищаем иконку генератора если была
 			hide_generator_icon(self, self.dragged_from.x, self.dragged_from.y)
 			self.tokens[dragged_key] = nil
-			print("BOARD: Cleared dragged token data from (" .. self.dragged_from.x .. ", " .. self.dragged_from.y .. ")")
+			debug_logger.log_board_debug("BOARD: Cleared dragged token data from (" .. self.dragged_from.x .. ", " .. self.dragged_from.y .. ")")
 		end
 		-- Обновляем визуал новой фишки
 		local new_generator_id = utils.create_token_string(merge_result.evo_id, merge_result.level)
 		if generator_config.is_generator(new_generator_id) then
 			new_token = self.tokens[token_key]
 			update_generator_visual(self, new_generator_id, token_key, new_token)
-			print("BOARD: Updated indicator for merged generator " .. new_generator_id)
+			debug_logger.log_board_debug("BOARD: Updated indicator for merged generator " .. new_generator_id)
 		end
 		local item_name = evolution_tables.get_item_name(merge_result.evo_id, merge_result.level)
-		print("BOARD: Merge completed - new token " .. merge_result.evo_id .. " level " .. merge_result.level .. " (" .. item_name .. ") at (" .. target_cell.x .. ", " .. target_cell.y .. ")")
+		debug_logger.log_board_debug("BOARD: Merge completed - new token " .. merge_result.evo_id .. " level " .. merge_result.level .. " (" .. item_name .. ") at (" .. target_cell.x .. ", " .. target_cell.y .. ")")
 		-- Если была выделена одна из исходных позиций, выделяем новую фишку
 		if self.pre_drag_selection and 
 		   ((self.pre_drag_selection.x == self.dragged_from.x and self.pre_drag_selection.y == self.dragged_from.y) or
 		    (self.pre_drag_selection.x == target_cell.x and self.pre_drag_selection.y == target_cell.y)) then
-			print("BOARD: Selecting merged token at (" .. target_cell.x .. ", " .. target_cell.y .. ")")
+			debug_logger.log_board_debug("BOARD: Selecting merged token at (" .. target_cell.x .. ", " .. target_cell.y .. ")")
 			select_cell(self, target_cell.x, target_cell.y)
 		end
 		check_selection_after_drag(self)
 	else
-		print("BOARD: Merge failed - no evolution result for " .. target_token.evo_id .. " level " .. target_token.level)
+		debug_logger.log_board_debug("BOARD: Merge failed - no evolution result for " .. target_token.evo_id .. " level " .. target_token.level)
 	end
 end
 
@@ -1370,13 +1370,13 @@ function perform_move(self, target_cell)
     local target_key = utils.get_token_key(target_cell.x, target_cell.y)
     local old_key = utils.get_token_key(self.dragged_from.x, self.dragged_from.y)
     
-    print("DEBUG: MOVE - old_key=" .. tostring(old_key) .. ", target_key=" .. tostring(target_key))
-    print("DEBUG: MOVE - dragged_from=(" .. self.dragged_from.x .. "," .. self.dragged_from.y .. ")")
-    print("DEBUG: MOVE - self.tokens[old_key] exists: " .. tostring(self.tokens[old_key] ~= nil))
+    debug_logger.log_board_debug("DEBUG: MOVE - old_key=" .. tostring(old_key) .. ", target_key=" .. tostring(target_key))
+    debug_logger.log_board_debug("DEBUG: MOVE - dragged_from=(" .. self.dragged_from.x .. "," .. self.dragged_from.y .. ")")
+    debug_logger.log_board_debug("DEBUG: MOVE - self.tokens[old_key] exists: " .. tostring(self.tokens[old_key] ~= nil))
     
     -- Токен должен существовать, так как мы его не удаляли при начале перетаскивания
     if not self.tokens[old_key] then
-        print("ERROR: MOVE - self.tokens[old_key] is nil! This shouldn't happen.")
+        debug_logger.log_error("MOVE - self.tokens[old_key] is nil! This shouldn't happen.")
         return
     end
     
@@ -1389,7 +1389,7 @@ function perform_move(self, target_cell)
         -- Обновляем координаты в ООП объекте фишки
         if self.tokens[target_key] then
             self.tokens[target_key]:move_to(target_cell.x, target_cell.y)
-            print("BOARD: Updated token coordinates from " .. old_key .. " to " .. target_key)
+            debug_logger.log_board_debug("BOARD: Updated token coordinates from " .. old_key .. " to " .. target_key)
         end
         
         -- Очищаем иконку генератора со старой позиции если была
@@ -1407,16 +1407,16 @@ function perform_move(self, target_cell)
     if generator_config.is_generator(generator_id) then
         local token = self.tokens[target_key]
         update_generator_visual(self, generator_id, target_key, token)
-        print("BOARD: Restored indicator for moved generator " .. generator_id .. " at new position")
+        debug_logger.log_board_debug("BOARD: Restored indicator for moved generator " .. generator_id .. " at new position")
     end
 
-    print("BOARD: Move completed - token " .. self.dragged_evo_id .. " level " .. self.dragged_level .. " moved to (" .. target_cell.x .. ", " .. target_cell.y .. ")")
+    debug_logger.log_board_debug("BOARD: Move completed - token " .. self.dragged_evo_id .. " level " .. self.dragged_level .. " moved to (" .. target_cell.x .. ", " .. target_cell.y .. ")")
 
     -- Если была выделена исходная позиция, выделяем новую позицию
     if self.pre_drag_selection and 
        self.pre_drag_selection.x == self.dragged_from.x and 
        self.pre_drag_selection.y == self.dragged_from.y then
-        print("BOARD: Moving selection from (" .. self.dragged_from.x .. ", " .. self.dragged_from.y .. ") to (" .. target_cell.x .. ", " .. target_cell.y .. ")")
+        debug_logger.log_board_debug("BOARD: Moving selection from (" .. self.dragged_from.x .. ", " .. self.dragged_from.y .. ") to (" .. target_cell.x .. ", " .. target_cell.y .. ")")
         select_cell(self, target_cell.x, target_cell.y)
     end
 
@@ -1442,13 +1442,13 @@ function perform_return(self)
 		end
 	end
 	
-	print("DEBUG: RETURN - original_key=" .. tostring(original_key) .. ", current_key=" .. tostring(current_key))
-	print("DEBUG: RETURN - dragged_from=(" .. self.dragged_from.x .. "," .. self.dragged_from.y .. ")")
-	print("DEBUG: RETURN - self.tokens[current_key] exists: " .. tostring(current_key and self.tokens[current_key] ~= nil))
+	debug_logger.log_board_debug("DEBUG: RETURN - original_key=" .. tostring(original_key) .. ", current_key=" .. tostring(current_key))
+	debug_logger.log_board_debug("DEBUG: RETURN - dragged_from=(" .. self.dragged_from.x .. "," .. self.dragged_from.y .. ")")
+	debug_logger.log_board_debug("DEBUG: RETURN - self.tokens[current_key] exists: " .. tostring(current_key and self.tokens[current_key] ~= nil))
 	
 	-- Токен должен существовать, так как мы его не удаляли при начале перетаскивания
 	if not current_key or not self.tokens[current_key] then
-		print("ERROR: RETURN - self.tokens[current_key] is nil! This shouldn't happen.")
+		debug_logger.log_error("RETURN - self.tokens[current_key] is nil! This shouldn't happen.")
 		return
 	end
 	
@@ -1460,7 +1460,7 @@ function perform_return(self)
 		-- Обновляем координаты в ООП объекте фишки
 		if self.tokens[original_key] then
 			self.tokens[original_key]:move_to(self.dragged_from.x, self.dragged_from.y)
-			print("BOARD: Returned token coordinates from " .. current_key .. " to " .. original_key)
+			debug_logger.log_board_debug("BOARD: Returned token coordinates from " .. current_key .. " to " .. original_key)
 		end
 		
 		-- Очищаем иконку генератора с текущей позиции если была
@@ -1476,16 +1476,16 @@ function perform_return(self)
 	if generator_config.is_generator(generator_id) then
 		local token = self.tokens[original_key]
 		update_generator_visual(self, generator_id, original_key, token)
-		print("BOARD: Restored indicator for returned generator " .. generator_id)
+		debug_logger.log_board_debug("BOARD: Restored indicator for returned generator " .. generator_id)
 	end
 	
-	print("BOARD: Return completed - token " .. self.dragged_evo_id .. " level " .. self.dragged_level .. " returned to (" .. self.dragged_from.x .. ", " .. self.dragged_from.y .. ")")
+	debug_logger.log_board_debug("BOARD: Return completed - token " .. self.dragged_evo_id .. " level " .. self.dragged_level .. " returned to (" .. self.dragged_from.x .. ", " .. self.dragged_from.y .. ")")
 	
 	-- Восстанавливаем выделение если фишка вернулась на то же место
 	if self.pre_drag_selection and 
 	   self.pre_drag_selection.x == self.dragged_from.x and 
 	   self.pre_drag_selection.y == self.dragged_from.y then
-		print("BOARD: Restoring selection at (" .. self.dragged_from.x .. ", " .. self.dragged_from.y .. ")")
+		debug_logger.log_board_debug("BOARD: Restoring selection at (" .. self.dragged_from.x .. ", " .. self.dragged_from.y .. ")")
 		select_cell(self, self.dragged_from.x, self.dragged_from.y)
 	end
 	
@@ -1495,9 +1495,9 @@ end
 
 -- СИСТЕМА ВЫДЕЛЕНИЯ: Функция проверки выделения после перетаскивания
 function check_selection_after_drag(self)
-	print("BOARD: Checking selection after drag - current selection: " .. (self.selected_cell and ("(" .. self.selected_cell.x .. ", " .. self.selected_cell.y .. ")") or "none"))
-	print("BOARD: Pre-drag selection: " .. (self.pre_drag_selection and ("(" .. self.pre_drag_selection.x .. ", " .. self.pre_drag_selection.y .. ")") or "none"))
-	print("BOARD: Dragged from: " .. (self.dragged_from and ("(" .. self.dragged_from.x .. ", " .. self.dragged_from.y .. ")") or "none"))
+	debug_logger.log_board_debug("BOARD: Checking selection after drag - current selection: " .. (self.selected_cell and ("(" .. self.selected_cell.x .. ", " .. self.selected_cell.y .. ")") or "none"))
+	debug_logger.log_board_debug("BOARD: Pre-drag selection: " .. (self.pre_drag_selection and ("(" .. self.pre_drag_selection.x .. ", " .. self.pre_drag_selection.y .. ")") or "none"))
+	debug_logger.log_board_debug("BOARD: Dragged from: " .. (self.dragged_from and ("(" .. self.dragged_from.x .. ", " .. self.dragged_from.y .. ")") or "none"))
 	
 	-- Проверяем, есть ли выделение после перетаскивания
 	if self.selected_cell then
@@ -1506,28 +1506,28 @@ function check_selection_after_drag(self)
 		local token = self.tokens[token_key]
 		
 		if not token then
-			print("BOARD: Token not found in selected cell - clearing selection")
+			debug_logger.log_board_debug("BOARD: Token not found in selected cell - clearing selection")
 			-- Фишки больше нет в выделенной ячейке - снимаем выделение
 			clear_cell_selection(self)
 		else
-			print("BOARD: Token found in selected cell - keeping selection")
+			debug_logger.log_board_debug("BOARD: Token found in selected cell - keeping selection")
 		end
 	elseif self.pre_drag_selection then
-		print("BOARD: No current selection, checking pre-drag selection (" .. self.pre_drag_selection.x .. ", " .. self.pre_drag_selection.y .. ")")
+		debug_logger.log_board_debug("BOARD: No current selection, checking pre-drag selection (" .. self.pre_drag_selection.x .. ", " .. self.pre_drag_selection.y .. ")")
 		-- Если было выделение до перетаскивания, но сейчас его нет
 		-- Проверяем, есть ли фишка в той ячейке, которая была выделена
 		local token_key = utils.get_token_key(self.pre_drag_selection.x, self.pre_drag_selection.y)
 		local token = self.tokens[token_key]
 		
 		if token then
-			print("BOARD: Restoring selection to pre-drag position")
+			debug_logger.log_board_debug("BOARD: Restoring selection to pre-drag position")
 			-- Восстанавливаем выделение
 			select_cell(self, self.pre_drag_selection.x, self.pre_drag_selection.y)
 		else
-			print("BOARD: No token found at pre-drag position - cannot restore selection")
+			debug_logger.log_board_debug("BOARD: No token found at pre-drag position - cannot restore selection")
 		end
 	else
-		print("BOARD: No selection to check")
+		debug_logger.log_board_debug("BOARD: No selection to check")
 	end
 end
 
@@ -1547,7 +1547,7 @@ function clear_drag_state(self)
 	self.last_mouse_pos = nil
 	self.pre_drag_selection = nil -- Очищаем сохраненное выделение
 	
-	print("BOARD: Drag state cleared")
+	debug_logger.log_board_debug("BOARD: Drag state cleared")
 end
 
 -- Функция для отображения информации о фишке
@@ -1557,7 +1557,7 @@ function show_token_info(self, evo_id, level)
 	
 	if chain and item_name then
 		local info_text = chain.name .. " - Уровень " .. level .. " - " .. item_name
-		print("BOARD: INFO: " .. info_text)
+		debug_logger.log_board_debug("BOARD: INFO: " .. info_text)
 		
 		-- Отправляем сообщение в UI для отображения информации
 		msg.post("main:/ui", "show_token_info", {
@@ -1566,19 +1566,19 @@ function show_token_info(self, evo_id, level)
 			item_name = item_name
 		})
 	else
-		print("BOARD: ERROR: Cannot get info for evo_id='" .. tostring(evo_id) .. "' level=" .. tostring(level))
+		debug_logger.log_error("Cannot get info for evo_id='" .. tostring(evo_id) .. "' level=" .. tostring(level))
 		if not chain then
-			print("BOARD: ERROR: Chain not found for evo_id='" .. tostring(evo_id) .. "'")
+			debug_logger.log_error("Chain not found for evo_id='" .. tostring(evo_id) .. "'")
 		end
 		if not item_name then
-			print("BOARD: ERROR: Item name not found for evo_id='" .. tostring(evo_id) .. "' level=" .. tostring(level))
+			debug_logger.log_error("Item name not found for evo_id='" .. tostring(evo_id) .. "' level=" .. tostring(level))
 		end
 	end
 end
 
 -- Функция для скрытия информации о фишке
 function hide_token_info(self)
-	print("INFO: Информация о фишке скрыта")
+	debug_logger.log_board_debug("INFO: Информация о фишке скрыта")
 	
 	-- Отправляем сообщение в UI для скрытия информации
 	msg.post("main:/ui", "hide_token_info")
@@ -1593,7 +1593,7 @@ function final(self)
 		end
 	end
 	self.generator_indicators = {}
-	print("BOARD: All manual generator indicators cleaned up")
+	debug_logger.log_board_debug("BOARD: All manual generator indicators cleaned up")
 	
 	-- Очищаем все индикаторы автоматических генераторов
 	for token_key, indicator in pairs(self.generator_auto_indicators) do
@@ -1602,7 +1602,7 @@ function final(self)
 		end
 	end
 	self.generator_auto_indicators = {}
-	print("BOARD: All automatic generator indicators cleaned up")
+	debug_logger.log_board_debug("BOARD: All automatic generator indicators cleaned up")
 	
 	-- Очищаем все иконки генераторов
 	for token_key, icon_id in pairs(self.generator_icons) do
@@ -1611,7 +1611,7 @@ function final(self)
 		end
 	end
 	self.generator_icons = {}
-	print("BOARD: All generator icons cleaned up")
+	debug_logger.log_board_debug("BOARD: All generator icons cleaned up")
 end
 
 -- Функция показа иконки генератора
@@ -1660,7 +1660,7 @@ function hide_generator_icon(self, grid_x, grid_y)
 			self.icon_animations[token_key] = nil
 		end
 		
-		print("BOARD: Removed generator icon at grid(" .. grid_x .. ", " .. grid_y .. ")")
+		debug_logger.log_board_debug("BOARD: Removed generator icon at grid(" .. grid_x .. ", " .. grid_y .. ")")
 	end
 end
 
@@ -1674,9 +1674,9 @@ function update_generator_icons(self)
 		end
 		local count = 0
 		for k, v in pairs(saved_animations) do count = count + 1 end
-		print("BOARD: update_generator_icons - saved " .. count .. " animations")
+		debug_logger.log_board_debug("BOARD: update_generator_icons - saved " .. count .. " animations")
 	else
-		print("BOARD: update_generator_icons - no existing animations to save")
+		debug_logger.log_board_debug("BOARD: update_generator_icons - no existing animations to save")
 	end
 	
 	-- Сначала очищаем все существующие иконки
@@ -1695,7 +1695,7 @@ function update_generator_icons(self)
 			restored_count = restored_count + 1
 		end
 	end
-	print("BOARD: update_generator_icons - restored " .. restored_count .. " animations")
+	debug_logger.log_board_debug("BOARD: update_generator_icons - restored " .. restored_count .. " animations")
 	
 	-- Теперь создаем иконки только для готовых генераторов
 	for token_key, token in pairs(self.tokens) do
@@ -1738,12 +1738,12 @@ function handle_disposable_generator_disposal(self, token_key)
         return false
     end
     
-    print("BOARD: Disposable generator " .. generator_id .. " has reached its limit, disposing...")
+    debug_logger.log_board_debug("BOARD: Disposable generator " .. generator_id .. " has reached its limit, disposing...")
     
     -- Получаем координаты генератора
     local grid_x, grid_y = utils.parse_token_key(token_key)
     if not grid_x or not grid_y then
-        print("BOARD: ERROR - Could not parse token key for disposal: " .. token_key)
+        debug_logger.log_error("Could not parse token key for disposal: " .. token_key)
         return false
     end
     
@@ -1777,16 +1777,16 @@ function handle_disposable_generator_disposal(self, token_key)
             -- Создаем новую фишку на месте старого генератора
             local new_token_key = create_token_on_board(self, dispose_evo_id, dispose_level, grid_x, grid_y)
             if new_token_key then
-                print("BOARD: Replaced disposable generator " .. generator_id .. " with " .. dispose_to)
+                debug_logger.log_board_debug("BOARD: Replaced disposable generator " .. generator_id .. " with " .. dispose_to)
                 return true
             else
-                print("BOARD: ERROR - Failed to create replacement token " .. dispose_to)
+                debug_logger.log_error("Failed to create replacement token " .. dispose_to)
             end
         else
-            print("BOARD: ERROR - Invalid dispose_to format: " .. dispose_to)
+            debug_logger.log_error("Invalid dispose_to format: " .. dispose_to)
         end
     else
-        print("BOARD: Disposable generator " .. generator_id .. " removed without replacement")
+        debug_logger.log_board_debug("BOARD: Disposable generator " .. generator_id .. " removed without replacement")
     end
     
     return true
@@ -1819,7 +1819,7 @@ function increment_cycle_count_for_token(self, token_key)
     end
     
     if not token.manual_generator then
-        print("ERROR: Manual generator not found for token " .. token_key)
+        debug_logger.log_error("Manual generator not found for token " .. token_key)
         return false
     end
     
@@ -1828,7 +1828,7 @@ function increment_cycle_count_for_token(self, token_key)
     end
     
     token.manual_generator.completed_cycles = token.manual_generator.completed_cycles + 1
-    print("BOARD: Incremented cycle count for token " .. token_key .. " to " .. token.manual_generator.completed_cycles .. "/" .. generator.dispose_after)
+    debug_logger.log_board_debug("BOARD: Incremented cycle count for token " .. token_key .. " to " .. token.manual_generator.completed_cycles .. "/" .. generator.dispose_after)
     
     return true
 end
@@ -1848,5 +1848,5 @@ function should_dispose_token(self, token_key)
     return completed_cycles >= generator.dispose_after
 end
 
-print("BOARD: Script loading completed")
+debug_logger.log_board_debug("BOARD: Script loading completed")
 

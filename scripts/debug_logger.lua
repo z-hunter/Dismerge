@@ -6,14 +6,19 @@ local last_log_times = {}
 
 -- Флаги для включения/отключения различных типов логирования
 local LOG_SETTINGS = {
-    PROGRESS_INDICATOR = false,  -- Отключаем логи индикаторов прогресса
-    INDICATOR_MESSAGES = false,  -- Отключаем логи сообщений индикаторов
-    GENERATOR_CONFIG = false,    -- Отключаем логи конфигурации генераторов
-    IMPORTANT = true,            -- Оставляем важные сообщения
-    ERRORS = true,               -- Оставляем ошибки
-    INIT = true,                 -- Оставляем инициализацию
-    ICON_ANIMATION = true,       -- Включаем логи анимации иконок
-    UPDATE_DT = true             -- Включаем логи dt в update
+    PROGRESS_INDICATOR = false,  -- логи индикаторов прогресса
+    INDICATOR_MESSAGES = false,  -- логи сообщений индикаторов
+    GENERATOR_CONFIG = false,    -- логи конфигурации генераторов
+    IMPORTANT = true,            --  важные сообщения
+    ERRORS = true,               -- ошибки
+    INIT = false,                 --инициализация
+    ICON_ANIMATION = false,       --  логи анимации иконок
+    UPDATE_DT = false,            -- логи dt в update
+    BOARD_DEBUG = true,          --  отладочные сообщения доски
+    TOKEN_DEBUG = false,          --  отладочные сообщения фишек
+    Z_COORDINATES = false,        -- логи Z-координат
+    CELL_SELECTION = true,       --  логи выделения ячеек
+    DRAG_OPERATIONS = true       --  логи операций перетаскивания
 }
 
 -- Функция для логирования с ограничением по времени
@@ -93,6 +98,46 @@ function M.log_update_dt(dt, throttle_seconds)
         return -- Отключено
     end
     M.log_with_throttle("update_dt", "[UPDATE DT] dt=" .. string.format("%.3f", dt), throttle_seconds or 1.0)
+end
+
+-- Функция для логирования отладочных сообщений доски (с ограничением)
+function M.log_board_debug(message, throttle_seconds)
+    if not LOG_SETTINGS.BOARD_DEBUG then
+        return -- Отключено
+    end
+    M.log_with_throttle("board_debug", "[BOARD DEBUG] " .. message, throttle_seconds or 2.0)
+end
+
+-- Функция для логирования отладочных сообщений фишек (с ограничением)
+function M.log_token_debug(message, throttle_seconds)
+    if not LOG_SETTINGS.TOKEN_DEBUG then
+        return -- Отключено
+    end
+    M.log_with_throttle("token_debug", "[TOKEN DEBUG] " .. message, throttle_seconds or 2.0)
+end
+
+-- Функция для логирования Z-координат (с ограничением)
+function M.log_z_coordinates(message, throttle_seconds)
+    if not LOG_SETTINGS.Z_COORDINATES then
+        return -- Отключено
+    end
+    M.log_with_throttle("z_coordinates", "[Z COORDINATES] " .. message, throttle_seconds or 1.0)
+end
+
+-- Функция для логирования выделения ячеек (с ограничением)
+function M.log_cell_selection(message, throttle_seconds)
+    if not LOG_SETTINGS.CELL_SELECTION then
+        return -- Отключено
+    end
+    M.log_with_throttle("cell_selection", "[CELL SELECTION] " .. message, throttle_seconds or 1.0)
+end
+
+-- Функция для логирования операций перетаскивания (с ограничением)
+function M.log_drag_operations(message, throttle_seconds)
+    if not LOG_SETTINGS.DRAG_OPERATIONS then
+        return -- Отключено
+    end
+    M.log_with_throttle("drag_operations", "[DRAG OPERATIONS] " .. message, throttle_seconds or 1.0)
 end
 
 -- Функция для управления настройками логирования

@@ -1,6 +1,9 @@
 go.property("grid_x", 1)
 go.property("grid_y", 1)
 
+-- Подключаем модуль логирования
+local debug_logger = require("scripts.debug_logger")
+
 function init(self)
 	self.grid_x = self.grid_x
 	self.grid_y = self.grid_y
@@ -16,7 +19,7 @@ end
 
 function on_message(self, message_id, message, sender)
 	if message_id == hash("clicked") then
-		print("CELL: Clicked at grid(" .. self.grid_x .. ", " .. self.grid_y .. ")")
+		debug_logger.log_cell_selection("Clicked at grid(" .. self.grid_x .. ", " .. self.grid_y .. ")")
 		-- Передаем информацию о нажатии на доску
 		msg.post("main:/board_factorys#board", "cell_clicked", {
 			grid_x = self.grid_x,
@@ -25,7 +28,7 @@ function on_message(self, message_id, message, sender)
 		})
 	elseif message_id == hash("set_highlighted") then
 		-- Обработка выделения ячейки
-		print("CELL: Setting highlighted=" .. tostring(message.highlighted) .. " for grid(" .. self.grid_x .. ", " .. self.grid_y .. ")")
+		debug_logger.log_cell_selection("Setting highlighted=" .. tostring(message.highlighted) .. " for grid(" .. self.grid_x .. ", " .. self.grid_y .. ")")
 		if message.highlighted then
 			-- Выделяем ячейку - делаем её желтоватой
 			go.set("#sprite", "tint", vmath.vector4(1.0, 1.0, 0.7, 1.0))
@@ -35,7 +38,7 @@ function on_message(self, message_id, message, sender)
 		end
 	elseif message_id == hash("set_tile") then
 		-- Устанавливаем тайл для ячейки
-		print("CELL: Setting tile " .. message.tile_name .. " for grid(" .. self.grid_x .. ", " .. self.grid_y .. ")")
+		debug_logger.log_cell_selection("Setting tile " .. message.tile_name .. " for grid(" .. self.grid_x .. ", " .. self.grid_y .. ")")
 		sprite.play_flipbook("#sprite", message.tile_name)
 	end
 end

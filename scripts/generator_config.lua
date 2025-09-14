@@ -295,36 +295,36 @@ end
 
 -- Функция для отладочного вывода конфигурации
 function M.debug_print_config()
-    print("=== GENERATOR CONFIGURATION ===")
+    debug_logger.log_init("=== GENERATOR CONFIGURATION ===")
     for generator_id, generator in pairs(generators) do
-        print("Generator: " .. generator_id)
-        print("  Comment: " .. (generator.comment or "none"))
-        print("  Dispose after: " .. (generator.dispose_after or "never"))
-        print("  Dispose to: " .. (generator.dispose_to or "nothing"))
+        debug_logger.log_init("Generator: " .. generator_id)
+        debug_logger.log_init("  Comment: " .. (generator.comment or "none"))
+        debug_logger.log_init("  Dispose after: " .. (generator.dispose_after or "never"))
+        debug_logger.log_init("  Dispose to: " .. (generator.dispose_to or "nothing"))
         
         if generator.manual.capacity then
-            print("  Manual:")
-            print("    Capacity: " .. generator.manual.capacity)
-            print("    Reload time: " .. (generator.manual.reload_sec or "none") .. "s")
-            print("    Outputs: " .. #generator.manual.outputs)
+            debug_logger.log_init("  Manual:")
+            debug_logger.log_init("    Capacity: " .. generator.manual.capacity)
+            debug_logger.log_init("    Reload time: " .. (generator.manual.reload_sec or "none") .. "s")
+            debug_logger.log_init("    Outputs: " .. #generator.manual.outputs)
             for i, output in ipairs(generator.manual.outputs) do
-                print("      " .. output .. " (rate: " .. (generator.manual.rates[i] or 0) .. ")")
+                debug_logger.log_init("      " .. output .. " (rate: " .. (generator.manual.rates[i] or 0) .. ")")
             end
         end
         
         if generator.automatic.capacity then
-            print("  Automatic:")
-            print("    Capacity: " .. generator.automatic.capacity)
-            print("    Timer: " .. (generator.automatic.timer_sec or "none") .. "s")
-            print("    Reload time: " .. (generator.automatic.reload_sec or "none") .. "s")
-            print("    Outputs: " .. #generator.automatic.outputs)
+            debug_logger.log_init("  Automatic:")
+            debug_logger.log_init("    Capacity: " .. generator.automatic.capacity)
+            debug_logger.log_init("    Timer: " .. (generator.automatic.timer_sec or "none") .. "s")
+            debug_logger.log_init("    Reload time: " .. (generator.automatic.reload_sec or "none") .. "s")
+            debug_logger.log_init("    Outputs: " .. #generator.automatic.outputs)
             for i, output in ipairs(generator.automatic.outputs) do
-                print("      " .. output .. " (rate: " .. (generator.automatic.rates[i] or 0) .. ")")
+                debug_logger.log_init("      " .. output .. " (rate: " .. (generator.automatic.rates[i] or 0) .. ")")
             end
         end
-        print()
+        debug_logger.log_init("")
     end
-    print("=== END GENERATOR CONFIGURATION ===")
+    debug_logger.log_init("=== END GENERATOR CONFIGURATION ===")
 end
 
 return M 

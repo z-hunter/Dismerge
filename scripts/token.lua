@@ -5,6 +5,7 @@ local token = {}
 local automatic_generator = require("scripts.automatic_generator")
 local generator_config = require("scripts.generator_config")
 local utils = require("scripts.utils")
+local debug_logger = require("scripts.debug_logger")
 
 -- Создание нового объекта фишки
 function token.create(evo_id, level, grid_x, grid_y, token_id)
@@ -61,7 +62,7 @@ function token.create(evo_id, level, grid_x, grid_y, token_id)
     self.update_visual = token.update_visual
     self.cleanup = token.cleanup
     
-    print("TOKEN: Created token " .. generator_id .. " at (" .. grid_x .. ", " .. grid_y .. ")")
+    debug_logger.log_token_debug("Created token " .. generator_id .. " at (" .. grid_x .. ", " .. grid_y .. ")")
     return self
 end
 
@@ -96,7 +97,7 @@ function token.update(self, dt)
             self.manual_generator.is_reloading = false
             self.manual_generator.reload_start_time = 0
             self.manual_generator.reload_end_time = 0
-            print("TOKEN: Manual generator " .. generator_id .. " finished reloading, restored capacity to " .. (self.manual_generator.current_capacity or 0))
+            debug_logger.log_token_debug("Manual generator " .. generator_id .. " finished reloading, restored capacity to " .. (self.manual_generator.current_capacity or 0))
         end
     end
 end
@@ -105,7 +106,7 @@ end
 function token.move_to(self, new_grid_x, new_grid_y)
     self.grid_x = new_grid_x
     self.grid_y = new_grid_y
-    print("TOKEN: Moved token " .. utils.create_token_string(self.evo_id, self.level) .. " to (" .. new_grid_x .. ", " .. new_grid_y .. ")")
+    debug_logger.log_token_debug("Moved token " .. utils.create_token_string(self.evo_id, self.level) .. " to (" .. new_grid_x .. ", " .. new_grid_y .. ")")
 end
 
 -- Получение ключа фишки
@@ -158,7 +159,7 @@ function token.activate_manual_generator(self)
             local current_time = os.clock()
             self.manual_generator.reload_start_time = current_time
             self.manual_generator.reload_end_time = current_time + generator.manual.reload_sec
-            print("TOKEN: Manual generator " .. generator_id .. " started reloading")
+            debug_logger.log_token_debug("Manual generator " .. generator_id .. " started reloading")
         end
     end
     
@@ -266,7 +267,7 @@ function token.create_icon_animation(self)
             animation_duration = 0.2,
             pause_duration = 5.0
         }
-        print("TOKEN: Created icon animation for " .. utils.create_token_string(self.evo_id, self.level))
+        debug_logger.log_token_debug("Created icon animation for " .. utils.create_token_string(self.evo_id, self.level))
     end
 end
 
@@ -277,7 +278,7 @@ function token.cleanup(self)
     self.manual_generator = nil
     self.icon_animation = nil
     
-    print("TOKEN: Cleaned up token " .. utils.create_token_string(self.evo_id, self.level))
+    debug_logger.log_token_debug("Cleaned up token " .. utils.create_token_string(self.evo_id, self.level))
 end
 
 return token

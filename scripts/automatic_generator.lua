@@ -2,6 +2,7 @@
 -- Централизованная логика для всех автоматических генераторов
 
 local automatic_generator = {}
+local debug_logger = require("scripts.debug_logger")
 
 -- Создание нового автоматического генератора
 function automatic_generator.create(generator_id, config)
@@ -35,7 +36,7 @@ function automatic_generator.create(generator_id, config)
     self.get_capacity = automatic_generator.get_capacity
     self.get_timer_progress = automatic_generator.get_timer_progress
     
-    print("AUTO_GEN: Created automatic generator " .. generator_id .. " with capacity 0 (exhausted, needs reload)")
+    debug_logger.log_board_debug("Created automatic generator " .. generator_id .. " with capacity 0 (exhausted, needs reload)")
     return self
 end
 
@@ -52,7 +53,7 @@ function automatic_generator.update(self, dt)
             self.reload_timer = 0
             self.capacity = self.config.capacity or 0
             self.reload_progress = 0
-            print("AUTO_GEN: " .. self.generator_id .. " finished reloading, restored capacity to " .. (self.config.capacity or 0))
+            debug_logger.log_board_debug(self.generator_id .. " finished reloading, restored capacity to " .. (self.config.capacity or 0))
         end
     else
         -- Генератор готов к работе
@@ -77,13 +78,13 @@ function automatic_generator.try_generate(self)
     if self.capacity > 0 then
         local old_capacity = self.capacity
         self.capacity = self.capacity - 1
-        print("AUTO_GEN: " .. self.generator_id .. " capacity reduced from " .. old_capacity .. " to " .. self.capacity)
+        debug_logger.log_board_debug(self.generator_id .. " capacity reduced from " .. old_capacity .. " to " .. self.capacity)
         
         -- Если емкость закончилась, запускаем перезарядку
         if self.capacity <= 0 and self.config.reload_sec then
             self._is_reloading = true
             self.reload_timer = 0
-            print("AUTO_GEN: " .. self.generator_id .. " started reloading")
+            debug_logger.log_board_debug(self.generator_id .. " started reloading")
         end
         
         -- Таймер будет сброшен в board.script после успешной генерации фишки
@@ -100,7 +101,7 @@ end
 function automatic_generator.pause(self)
     if not self._is_paused then
         self._is_paused = true
-        print("AUTO_GEN: " .. self.generator_id .. " paused - no adjacent cells available")
+        debug_logger.log_board_debug(self.generator_id .. " paused - no adjacent cells available")
     end
     -- Таймер НЕ сбрасываем - он останется на текущем значении
 end
@@ -109,7 +110,7 @@ end
 function automatic_generator.resume(self)
     if self._is_paused then
         self._is_paused = false
-        print("AUTO_GEN: " .. self.generator_id .. " resumed - adjacent cells available")
+        debug_logger.log_board_debug(self.generator_id .. " resumed - adjacent cells available")
     end
 end
 
