@@ -23,8 +23,12 @@ local GRID_HEIGHT = 9
 local FIX_X = 300
 local FIX_Y = 300
 
--- Z-координаты для разных типов объектов
-local DRAGGED_TOKEN_Z = 0.5  -- Z для перетаскиваемых фишек (поверх фишек на поле)
+-- Z-координаты слоёв (draw order через pos.z, диапазон Defold: -1..1)
+local CELL_Z = -0.5
+local TOKEN_Z = 0.2
+local GENERATOR_ICON_Z = 0.3
+local INDICATOR_Z = 0.4
+local DRAGGED_TOKEN_Z = 0.8
 
 -- получить позицию ячейки по координатам сетки
 local function grid_to_screen(gx, gy)
@@ -33,7 +37,7 @@ local function grid_to_screen(gx, gy)
 	return vmath.vector3(
 		(gx - 1) * CELL_SIZE - half_width + FIX_X,
 		(gy - 1) * CELL_SIZE - half_height + FIX_Y,
-		-0.5  -- Ячейки поля дальше от камеры
+		CELL_Z
 	)
 end
 
@@ -235,10 +239,10 @@ function init(self)
 			local pos = vmath.vector3(
 				(x - 1) * CELL_SIZE - half_width + FIX_X,
 				(y - 1) * CELL_SIZE - half_height + FIX_Y,
-				-0.5  -- Ячейки поля дальше от камеры
+				CELL_Z
 			)
-			local id = factory.create("#cell_factory", pos, nil, { grid_x = x, grid_y = y }, 0)
-			debug_logger.log_z_coordinates("CREATE_CELL - pos.z=" .. tostring(pos.z) .. ", factory Z=0, final Z=" .. tostring(pos.z + 0))
+			local id = factory.create("#cell_factory", pos, nil, { grid_x = x, grid_y = y })
+			debug_logger.log_z_coordinates("CREATE_CELL - pos.z=" .. tostring(pos.z) .. ", final Z=" .. tostring(pos.z))
 			self.cells[x][y] = { id = id }
 			
 			-- Устанавливаем случайный тайл для ячейки в шахматном порядке
@@ -288,14 +292,14 @@ end
 function create_token_on_board(self, evo_id, level, grid_x, grid_y)
 	debug_logger.log_board_debug("create_token_on_board called for " .. evo_id .. " level " .. level .. " at (" .. grid_x .. ", " .. grid_y .. ")")
 	local pos = grid_to_screen(grid_x, grid_y)
-	pos.z = 0  -- Z=0 для фишек на поле (final Z = 0 + 0 + 1 = 1)
+	pos.z = TOKEN_Z
 	local properties = { level = level, grid_x = grid_x, grid_y = grid_y }
 	
 	-- 🎨 Проверяем наличие атласа и спрайта для этой фишки
 	local has_sprite, atlas_id, sprite_name = check_sprite_availability(evo_id, level)
 	
-	local token_id = factory.create("#token_factory", pos, nil, properties, 1)  -- Factory Z=1
-	debug_logger.log_z_coordinates("CREATE_TOKEN - pos.z=" .. tostring(pos.z) .. ", factory Z=1, final Z=1")
+	local token_id = factory.create("#token_factory", pos, nil, properties, 1)
+	debug_logger.log_z_coordinates("CREATE_TOKEN - pos.z=" .. tostring(pos.z) .. ", final Z=" .. tostring(pos.z))
     
     -- Проверяем, что токен был создан успешно
     if not token_id then
@@ -383,13 +387,13 @@ function update(self, dt)
 				
 				if progress >= 1.0 then
 					-- Анимация завершена - перемещаем фишку на финальную позицию
-					local end_pos = vmath.vector3(anim.end_pos.x, anim.end_pos.y, 0)  -- Z устанавливается в token.go
+					local end_pos = vmath.vector3(anim.end_pos.x, anim.end_pos.y, TOKEN_Z)
 					msg.post(anim.token_id, "set_position", { position = end_pos })
 					table.remove(self.animating_tokens, i)
 				else
 					-- Обновляем позицию
 					local current_pos = anim.start_pos + (anim.end_pos - anim.start_pos) * progress
-					current_pos.z = 0  -- Z устанавливается в token.go
+					current_pos.z = TOKEN_Z
 					msg.post(anim.token_id, "set_position", { position = current_pos })
 					i = i + 1
 				end
@@ -894,7 +898,7 @@ function show_generator_indicator(self, generator_id, token_key, token, progress
 	
 	-- Создаем новый индикатор
 	local token_pos = grid_to_screen(grid_x, grid_y)
-	token_pos.z = 0
+	token_pos.z = TOKEN_Z
 	local indicator_pos, indicator_scale, indicator_color
 	
 	if type == "manual" then
@@ -902,7 +906,7 @@ function show_generator_indicator(self, generator_id, token_key, token, progress
 		indicator_pos = vmath.vector3(
 			token_pos.x + CELL_SIZE * 0.25,  -- Смещение вправо
 			token_pos.y + CELL_SIZE * 0.25,  -- Смещение вверх
-			0.6 -- фиксированное значение, чтобы все части индикатора были видимы
+			INDICATOR_Z
 		)
 		indicator_scale = vmath.vector3(0.25, 0.25, 1) -- Уменьшен в 4 раза
 		indicator_color = vmath.vector4(0.2, 0.6, 1.0, 1) -- Синий цвет
@@ -927,7 +931,7 @@ function show_generator_indicator(self, generator_id, token_key, token, progress
 		indicator_pos = vmath.vector3(
 			token_pos.x - CELL_SIZE * 0.25,  -- Смещение влево
 			token_pos.y + CELL_SIZE * 0.25,  -- Смещение вверх
-			0.6 -- фиксированное значение, чтобы все части индикатора были видимы
+			INDICATOR_Z
 		)
 		indicator_scale = vmath.vector3(0.25, 0.25, 1) -- Уменьшен в 4 раза
 		indicator_color = vmath.vector4(0.2, 1.0, 0.2, 1) -- Зеленый цвет
@@ -1261,11 +1265,11 @@ function create_drop_animation(self, token_id, from_cell, to_cell)
 	
 	-- Начальная позиция (у генератора)
 	local start_pos = grid_to_screen(from_cell.x, from_cell.y)
-	start_pos.z = 0  -- Z устанавливается в token.go
+	start_pos.z = TOKEN_Z
 	
 	-- Конечная позиция (целевая клетка)
 	local end_pos = grid_to_screen(to_cell.x, to_cell.y)
-	end_pos.z = 0  -- Z устанавливается в token.go
+	end_pos.z = TOKEN_Z
 	
 	-- Анимация полета
 	local duration = 0.17 -- секунды (ускорено в 3 раза)
@@ -1372,7 +1376,7 @@ end
 -- НОВАЯ СИСТЕМА: Функция выполнения перемещения
 function perform_move(self, target_cell)
     local pos = grid_to_screen(target_cell.x, target_cell.y)
-    pos.z = 0  -- Z устанавливается в token.go
+    pos.z = TOKEN_Z
     msg.post(self.dragged_token, "move_to", { position = pos, smooth = true })
 
     local target_key = utils.get_token_key(target_cell.x, target_cell.y)
@@ -1436,7 +1440,7 @@ end
 function perform_return(self)
 	-- Возвращаем фишку на исходную позицию
 	local pos = grid_to_screen(self.dragged_from.x, self.dragged_from.y)
-	pos.z = 0  -- Z устанавливается в token.go
+	pos.z = TOKEN_Z
 	msg.post(self.dragged_token, "move_to", { position = pos, smooth = true })
 	
 	-- Останавливаем перетаскивание для восстановления визуального состояния
@@ -1634,7 +1638,7 @@ function show_generator_icon(self, grid_x, grid_y)
 		local icon_pos = vmath.vector3(
 			cell_pos.x + 20,  -- Смещение вправо от центра клетки
 			cell_pos.y - 20,  -- Смещение вниз от центра клетки
-			0.1  -- Z=0.1 для иконок генераторов (поверх фишек с Z=0)
+			GENERATOR_ICON_Z
 		)
 		
 		local icon_id = factory.create("#generator_icon_factory", icon_pos)

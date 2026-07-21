@@ -12,9 +12,6 @@ embedded_components {
   "  texture: \"/assets/evo/evo.atlas\"\n"
   "}\n"
   ""
-  scale {
-    z: 1.0E-6
-  }
 }
 embedded_components {
   id: "label"

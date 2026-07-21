@@ -277,21 +277,21 @@ ui.on_message() → label.set_text()
 ### **4. Z-координаты (иерархия слоев):**
 **Принцип:** В Defold объекты с большим Z отображаются ближе к камере (поверх объектов с меньшим Z).
 
-**Иерархия слоев:**
-- **Ячейки поля**: `final Z = -0.5` (pos.z=-0.5 + factory Z=0) - самый дальний слой
-- **Фишки на поле**: `final Z = 1` (pos.z=0 + token.go Z=0 + factory Z=1) - основной игровой слой
-- **Иконки генераторов**: `final Z = 0.1` (pos.z=0.1 + factory Z=0) - поверх фишек
-- **Перетаскиваемые фишки**: `final Z = 1.5` (pos.z=0.5 + token.go Z=0 + factory Z=1) - самый ближний слой
+**Иерархия слоев** (константы в `board.script`):
+- **Ячейки поля**: `final Z = -0.5` (`CELL_Z`)
+- **Фишки на поле**: `final Z = 0.2` (`TOKEN_Z`)
+- **Иконки генераторов**: `final Z = 0.3` (`GENERATOR_ICON_Z`)
+- **Индикаторы перезарядки**: `final Z = 0.4` (`INDICATOR_Z`)
+- **Перетаскиваемые фишки**: `final Z = 0.8` (`DRAGGED_TOKEN_Z`)
 
 **Расчет final Z:**
 ```
-Final Z = Game Object Z + Component Z + Factory Z
+Final Z = Game Object Z + Component Z
 ```
 
 **Где устанавливаются Z-координаты:**
-- **pos.z** - в скриптах (board.script, token.script)
-- **token.go Z** - в компонентах Sprite и Label игрового объекта token.go
-- **factory Z** - последний параметр в factory.create()
+- **pos.z** — в `board.script` через `vmath.vector3(x, y, z)` (единственный источник draw order)
+- **Component Z** — в компонентах Sprite и Label (`token.go`, `cell.go`), обычно 0
 
 **Диапазон рендеринга Defold:** -1.0 до 1.0 (вне этого диапазона объекты не отображаются)
 
@@ -486,9 +486,9 @@ Dismerge/
 ### **1. Централизованное создание фишек:**
 ```lua
 -- Единая функция для создания всех фишек на поле
-function create_token_on_board(self, evo_id, level, grid_x, grid_y, initial_z)
+function create_token_on_board(self, evo_id, level, grid_x, grid_y)
     local pos = grid_to_screen(grid_x, grid_y)
-    pos.z = initial_z or 0
+    pos.z = TOKEN_Z  -- 0.2
     local properties = { level = level, grid_x = grid_x, grid_y = grid_y }
     local token_id = factory.create("#token_factory", pos, nil, properties, 1)
     
@@ -768,23 +768,21 @@ end
 
 **Принцип:** В Defold объекты с большим Z отображаются ближе к камере (поверх объектов с меньшим Z).
 
-**Текущая иерархия слоев в игре Dismerge:**
-```
-final Z = -0.5  - Ячейки поля (самый дальний слой)
-final Z = 0.1   - Иконки генераторов (поверх ячеек)
-final Z = 1.0   - Фишки на поле (основной игровой слой)
-final Z = 1.5   - Перетаскиваемые фишки (самый ближний слой)
-```
+**Иерархия слоев:**
+- **Ячейки поля**: `final Z = -0.5` (`CELL_Z`) — самый дальний слой
+- **Фишки на поле**: `final Z = 0.2` (`TOKEN_Z`) — основной игровой слой
+- **Иконки генераторов**: `final Z = 0.3` (`GENERATOR_ICON_Z`) — поверх фишек
+- **Индикаторы перезарядки**: `final Z = 0.4` (`INDICATOR_Z`) — поверх фишек
+- **Перетаскиваемые фишки**: `final Z = 0.8` (`DRAGGED_TOKEN_Z`) — самый ближний слой
 
 **Расчет final Z в Defold:**
 ```
-Final Z = Game Object Z + Component Z + Factory Z
+Final Z = Game Object Z + Component Z
 ```
 
 **Где устанавливаются Z-координаты:**
-- **pos.z** - в скриптах (board.script, token.script) через `vmath.vector3(x, y, z)`
+- **pos.z** - в скриптах (board.script, token.script) через `vmath.vector3(x, y, z)` - используется для draw ordering
 - **Component Z** - в компонентах Sprite и Label игрового объекта (token.go, cell.go)
-- **Factory Z** - последний параметр в `factory.create(url, pos, rot, props, scale, id, z)`
 
 **Диапазон рендеринга Defold:** -1.0 до 1.0 (вне этого диапазона объекты не отображаются)
 
@@ -792,26 +790,27 @@ Final Z = Game Object Z + Component Z + Factory Z
 - Элемент с большим final Z закрывает элемент с меньшим final Z
 - Для создания эффекта "под/за" используйте промежуточные Z-значения
 - Рекомендуемый шаг между слоями: 0.1-0.5
+- **Важно:** Используйте pos.z для упорядочивания слоев, держите значения в диапазоне -1..1
 
 **Пример расчета для фишки на поле:**
 ```lua
 -- В board.script
 local pos = grid_to_screen(grid_x, grid_y)  -- pos.z = -0.5
-pos.z = 0  -- Устанавливаем pos.z = 0
-local token_id = factory.create("#token_factory", pos, nil, properties, 1)  -- factory Z = 1
+pos.z = 0.2  -- Устанавливаем pos.z для draw ordering (в диапазоне -1..1)
+local token_id = factory.create("#token_factory", pos, nil, properties, 1)  -- scale = 1
 
 -- В token.go: Sprite и Label имеют Z = 0
--- Final Z = 0 (pos.z) + 0 (token.go Z) + 1 (factory Z) = 1
+-- Final Z = 0.2 (pos.z) + 0 (token.go Z) = 0.2
 ```
 
 **Пример расчета для перетаскиваемой фишки:**
 ```lua
 -- В board.script update()
-local target_pos = vmath.vector3(mouse_x, mouse_y, 0.5)  -- pos.z = 0.5
+local target_pos = vmath.vector3(mouse_x, mouse_y, 0.8)  -- pos.z = 0.8 для draw ordering
 msg.post(token_id, "set_position", { position = target_pos })
 
 -- В token.go: Sprite и Label имеют Z = 0
--- Final Z = 0.5 (pos.z) + 0 (token.go Z) + 1 (factory Z) = 1.5
+-- Final Z = 0.8 (pos.z) + 0 (Component Z) = 0.8
 ```
 
 ### **Система координат экрана**
