@@ -70,10 +70,6 @@
         :scene
       ]
       [
-        "/main/main.collection"
-        :scene
-      ]
-      [
         "/main/board_factorys.go"
         :scene
       ]
@@ -110,12 +106,16 @@
         :scene
       ]
       [
-        "/scripts/board.script"
+        "/scripts/automatic_generator.lua"
         :code
       ]
       [
-        "/scripts/automatic_generator.lua"
-        :code
+        "/main/cell.go"
+        :scene
+      ]
+      [
+        "/main/main.collection"
+        :scene
       ]
       [
         "/main/token_factory.factory"
@@ -126,8 +126,8 @@
         :scene
       ]
       [
-        "/main/cell.go"
-        :scene
+        "/scripts/board.script"
+        :code
       ]
     ]
   }

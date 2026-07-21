@@ -4,7 +4,7 @@ debug_logger.log_init("UI SCRIPT: Script loaded successfully!")
 
 function init(self)
 	-- Устанавливаем начальный текст
-	label.set_text("#info_label", "ТЕСТОВАЯ НАДПИСЬ НА ЭКРАНЕ")
+	label.set_text("#info_label", "Совмести два одинаковых предмета")
 end
 
 function on_message(self, message_id, message, sender)
@@ -14,6 +14,6 @@ function on_message(self, message_id, message, sender)
 		local info_text = (message.chain_name or "") .. " - Уровень " .. (message.level or "") .. " - " .. (message.item_name or "")
 		label.set_text("#info_label", info_text)
 	elseif message_id == hash("hide_token_info") then
-		label.set_text("#info_label", "ТЕСТОВАЯ НАДПИСЬ НА ЭКРАНЕ")
+		label.set_text("#info_label", "")
 	end
 end 
